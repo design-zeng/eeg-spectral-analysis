@@ -1,29 +1,33 @@
 import os, json, traceback
 import numpy as np
 from typing import Dict, Any, List, Tuple
-from .base import BaseApp
-from .utils import load_subject_tasks_json, list_subject_jsons, subject_id_from_path, resolve_channels, save_json
-from .psd import compute_psd_welch
-from .features import bandpower, spectral_entropy, spectral_moments, spectral_edge, median_frequency
-from .iaf import estimate_iaf
-from .faa import faa_from_psd
+from eegspec.base import BaseApp
+from eegspec.utils import load_subject_tasks_json, list_subject_jsons, subject_id_from_path, resolve_channels, save_json
+from eegspec.psd import compute_psd_welch
+from eegspec.features import bandpower, spectral_entropy, spectral_moments, spectral_edge, median_frequency
+from eegspec.iaf import estimate_iaf
+from eegspec.faa import faa_from_psd
+from eegspec.trp import trp_from_bandpowers
+
 
 def run_task_compute(subject_id: str, task_name: str, data_txc: np.ndarray, sfreq: float,
                      nperseg: int, noverlap: int, window: str,
-                     ch_names: List[str], alpha_band: Tuple[float,float],
+                     ch_names: List[str], alpha_band: Tuple[float, float],
                      use_db_faa: bool, out_dir: str,
                      log_kwargs: Dict[str, Any]) -> Dict[str, Any]:
     app = BaseApp(**log_kwargs)
     try:
         app.logger.info(f"[Task start] subject={subject_id} task={task_name} shape={data_txc.shape}")
         freqs, psd = compute_psd_welch(data_txc, sfreq=sfreq, nperseg=nperseg, noverlap=noverlap, window=window)
-        std_bands = {"delta":(1.0,4.0), "theta":(4.0,7.0), "alpha":alpha_band, "beta":(13.0,30.0), "gamma":(30.0,45.0)}
+        std_bands = {"delta": (1.0, 4.0), "theta": (4.0, 7.0), "alpha": alpha_band, "beta": (13.0, 30.0),
+                     "gamma": (30.0, 45.0)}
         bp_abs = bandpower(psd, freqs, std_bands, relative=False)
-        bp_rel = bandpower(psd, freqs, std_bands, relative=True, total_range=(1.0,45.0))
+        bp_rel = bandpower(psd, freqs, std_bands, relative=True, total_range=(1.0, 45.0))
         ent = spectral_entropy(psd, freqs, fmin=1.0, fmax=45.0, log_base=np.e)
         moms = spectral_moments(psd, freqs, fmin=1.0, fmax=45.0)
         sef95 = spectral_edge(psd, freqs, percent=0.95, fmin=1.0, fmax=45.0)
         f50 = median_frequency(psd, freqs, fmin=1.0, fmax=45.0)
+        iaf = estimate_iaf(psd, freqs, fmin=alpha_band[0], fmax=alpha_band[1], smooth=True)
         faa_val = faa_from_psd(psd, freqs, ch_names, left="F3", right="F4", alpha=alpha_band, use_db=use_db_faa)
 
         subj_dir = os.path.join(out_dir, "subjects", subject_id)
@@ -42,6 +46,7 @@ def run_task_compute(subject_id: str, task_name: str, data_txc: np.ndarray, sfre
             "moments": {k: v.tolist() for k, v in moms.items()},
             "SEF95": sef95.tolist(),
             "F50": f50.tolist(),
+            "IAF": iaf.tolist(),
             "FAA": faa_val,
             "alpha_band": list(alpha_band)
         }
@@ -53,10 +58,12 @@ def run_task_compute(subject_id: str, task_name: str, data_txc: np.ndarray, sfre
         app.logger.debug(traceback.format_exc())
         return {"ok": False, "subject": subject_id, "task": task_name, "error": str(e)}
 
+
 def analyze_entry(input_path: str, sfreq: float, out_dir: str,
                   nperseg: int = 1024, noverlap: int = None, window: str = "hann",
                   channels_file: str = None,
                   alpha: str = "8,13", faa_db: bool = False,
+                  trp_mode: str = "ratio", trp_baseline: str = "rest",
                   max_processors: int = 4,
                   log_kwargs: Dict[str, Any] = None) -> Dict[str, Any]:
     if log_kwargs is None:
@@ -101,9 +108,12 @@ def analyze_entry(input_path: str, sfreq: float, out_dir: str,
     futures = []
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_processors) as ex:
         while idx < total and len(futures) < max_processors:
-            sid, tname, data, ch = schedule[idx]; idx += 1
-            task_log_kwargs = dict(log_kwargs); task_log_kwargs["log_suffix"] = f"_{sid}_{tname}"
-            fut = ex.submit(run_task_compute, sid, tname, data, sfreq, nperseg, noverlap, window, ch, alpha_band, faa_db, out_dir, task_log_kwargs)
+            sid, tname, data, ch = schedule[idx];
+            idx += 1
+            task_log_kwargs = dict(log_kwargs);
+            task_log_kwargs["log_suffix"] = f"_{sid}_{tname}"
+            fut = ex.submit(run_task_compute, sid, tname, data, sfreq, nperseg, noverlap, window, ch, alpha_band,
+                            faa_db, out_dir, task_log_kwargs)
             futures.append(fut)
         done_count = 0
         while futures:
@@ -114,20 +124,81 @@ def analyze_entry(input_path: str, sfreq: float, out_dir: str,
                     app.logger.error(f"Worker crashed: {e}")
                     res = {"ok": False, "error": str(e)}
                 if res.get("ok"):
-                    sid = res["subject"]; tname = res["task"]
-                    summary.setdefault("subjects", {}).setdefault(sid, {})[tname] = {k: res[k] for k in ("psd","metrics") if k in res}
+                    sid = res["subject"];
+                    tname = res["task"]
+                    summary.setdefault("subjects", {}).setdefault(sid, {})[tname] = {k: res[k] for k in
+                                                                                     ("psd", "metrics") if k in res}
                 else:
                     app.logger.error(f"Task failed: {res}")
                 done_count += 1
                 futures.remove(fut)
                 if idx < total:
-                    sid, tname, data, ch = schedule[idx]; idx += 1
-                    task_log_kwargs = dict(log_kwargs); task_log_kwargs["log_suffix"] = f"_{sid}_{tname}"
-                    futures.append(ex.submit(run_task_compute, sid, tname, data, sfreq, nperseg, noverlap, window, ch, alpha_band, faa_db, out_dir, task_log_kwargs))
+                    sid, tname, data, ch = schedule[idx];
+                    idx += 1
+                    task_log_kwargs = dict(log_kwargs);
+                    task_log_kwargs["log_suffix"] = f"_{sid}_{tname}"
+                    futures.append(
+                        ex.submit(run_task_compute, sid, tname, data, sfreq, nperseg, noverlap, window, ch, alpha_band,
+                                  faa_db, out_dir, task_log_kwargs))
                 app.logger.info(f"Progress: {done_count}/{total}")
                 break
 
     summ_path = os.path.join(out_dir, "summary.json")
+
+    # === Post-process: compute TRP vs baseline for each subject ===
+    try:
+        for sid, tasks_map in summary.get("subjects", {}).items():
+            # Load bands_abs for each task
+            band_abs_by_task = {}
+            for tname, paths in tasks_map.items():
+                try:
+                    with open(paths["metrics"], "r", encoding="utf-8") as f:
+                        m = json.load(f)
+                    band_abs_by_task[tname] = {k: np.asarray(v) for k, v in m["bands_abs"].items()}
+                except Exception as e:
+                    app.logger.warning(f"TRP: skip {sid}/{tname}: {e}")
+
+            if not band_abs_by_task:
+                continue
+
+            # Choose baseline
+            base_name = trp_baseline
+            if base_name is None:
+                # heuristics
+                for cand in ["rest", "baseline", "eyes_closed", "ec", "eo", "eyes_open"]:
+                    if cand in band_abs_by_task:
+                        base_name = cand;
+                        break
+                if base_name is None:
+                    base_name = sorted(band_abs_by_task.keys())[0]
+            if base_name not in band_abs_by_task:
+                app.logger.warning(f"TRP: baseline '{base_name}' not found for {sid}, skip")
+                continue
+
+            P_base = band_abs_by_task[base_name]
+            trp_out = {"baseline": base_name, "mode": trp_mode, "bands": {}}
+            for tname, bands in band_abs_by_task.items():
+                if tname == base_name:
+                    continue
+                trp_out["bands"][tname] = {}
+                for band, P_task in bands.items():
+                    try:
+                        val = trp_from_bandpowers(P_base[band], P_task, mode=trp_mode)
+                        trp_out["bands"][tname][band] = val.tolist()
+                    except Exception as e:
+                        app.logger.warning(f"TRP: fail {sid}/{tname}/{band}: {e}")
+
+            # Save TRP file
+            subj_dir = os.path.join(out_dir, "subjects", sid)
+            os.makedirs(subj_dir, exist_ok=True)
+            trp_path = os.path.join(subj_dir, f"trp_{base_name}.json")
+            with open(trp_path, "w", encoding="utf-8") as f:
+                json.dump(trp_out, f, ensure_ascii=False, separators=(",", ":"))
+            summary["subjects"][sid]["TRP"] = trp_path
+            app.logger.info(f"TRP written: {trp_path}")
+    except Exception as e:
+        app.logger.warning(f"TRP post-process error: {e}")
+
     save_json(summary, summ_path)
     app.logger.info(f"Summary written: {summ_path}")
     return summary

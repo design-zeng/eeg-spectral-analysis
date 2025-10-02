@@ -1,6 +1,6 @@
 import argparse, sys, os, traceback
-from .base import BaseApp
-from .analyze import analyze_entry
+from eegspec.base import BaseApp
+from eegspec.analyze import analyze_entry
 
 def main(argv=None):
     try:
@@ -31,6 +31,8 @@ def _main_impl(argv=None):
     sp.add_argument("--window", type=str, default="hann")
     sp.add_argument("--channels-file", type=str, default=None, help="Plain text, .csv or .locs")
     sp.add_argument("--alpha", type=str, default="8,13")
+    sp.add_argument("--trp-baseline", type=str, default="1_rest", help="Baseline task name for TRP (default: 1_rest)")
+    sp.add_argument("--trp-mode", type=str, default="log", choices=["log", "ratio", "db"], help="TRP output mode")
     sp.add_argument("--faa-db", action="store_true")
     sp.add_argument("--max-processors", type=int, default=4)
     add_logging_args(sp)
@@ -53,6 +55,8 @@ def cmd_analyze(args):
             channels_file=args.channels_file,
             alpha=args.alpha,
             faa_db=args.faa_db,
+            trp_baseline=args.trp_baseline,
+            trp_mode=args.trp_mode,
             max_processors=args.max_processors,
             log_kwargs=dict(log_level=args.log_level, log_dir=args.log_dir, log_prefix=args.log_prefix, log_suffix=args.log_suffix, log_percentage=args.log_percentage),
         )
@@ -61,3 +65,26 @@ def cmd_analyze(args):
         app.logger.error(f"Analyze failed: {e}")
         app.logger.debug(traceback.format_exc())
         raise
+
+
+if __name__ == "__main__":
+    debug_args = [
+        "analyze",
+        "--input", r"D:\EEG-signals-respond-differently-to-three-modes-of-thinking-in-a-loosely-controlled-experiment\clean_data\sub_01.json",
+        "--sfreq", "500",
+        "--out-dir", r"D:\EEG\out",
+        "--nperseg", "1024",
+        "--noverlap", "512",
+        "--window", "hann",
+        "--trp-mode", "log",
+        "--trp-baseline", "1_rest",
+        "--alpha", "8,13",
+        "--faa-db",
+        "--max-processors", "8",
+        "--log-level", "DEBUG",
+        "--log-dir", r"D:\EEG\out\.logs",
+        "--log-prefix", "run_",
+        "--log-suffix", "_alpha",
+        "--log-percentage", "0.8",
+    ]
+    sys.exit(main(debug_args))
