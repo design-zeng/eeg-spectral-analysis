@@ -2,7 +2,7 @@ import numpy as np
 from scipy.signal import welch, get_window
 from typing import Tuple, Optional
 
-def compute_psd_welch(data: np.ndarray, sfreq: float, nperseg: int = 1024, noverlap: Optional[int] = None, window: str = "hann") -> Tuple[np.ndarray, np.ndarray]:
+def compute_psd_welch(data: np.ndarray, sfreq: float, nperseg: int = 1000, noverlap: Optional[int] = None, window: str = "hann") -> Tuple[np.ndarray, np.ndarray]:
     """Compute per-channel PSD via Welch. data: (n_times, n_channels)."""
     if data.ndim != 2:
         raise ValueError("data must be (n_times, n_channels)")

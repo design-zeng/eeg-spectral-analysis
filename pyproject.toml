@@ -9,7 +9,6 @@ description = "EEG spectral toolkit: folder/file JSON (task-centric per subject)
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT License"}
-authors = [{name="Your Name", email="you@example.com"}]
 dependencies = [
     "numpy>=1.22",
     "scipy>=1.8",

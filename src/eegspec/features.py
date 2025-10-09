@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.integrate import simpson
 from typing import Dict, Tuple
 from .utils import EPS
 
@@ -9,10 +10,10 @@ def bandpower(psd: np.ndarray, freqs: np.ndarray, bands: Dict[str, Tuple[float,f
     out = {}
     if relative:
         tm = band_mask(freqs, total_range[0], total_range[1])
-        denom = np.trapz(psd[:, tm], freqs[tm], axis=1) + EPS
+        denom = simpson(psd[:, tm], freqs[tm], axis=1) + EPS
     for name, (fmin,fmax) in bands.items():
         m = band_mask(freqs, fmin, fmax)
-        p = np.trapz(psd[:, m], freqs[m], axis=1)
+        p = simpson(psd[:, m], freqs[m], axis=1)
         if relative:
             p = p / denom
         out[name] = p
