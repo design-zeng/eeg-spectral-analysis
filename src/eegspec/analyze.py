@@ -8,6 +8,7 @@ from eegspec.features import bandpower, spectral_entropy, spectral_moments, spec
 from eegspec.iaf import estimate_iaf
 from eegspec.faa import faa_from_psd
 from eegspec.trp import trp_from_bandpowers
+from eegspec.bands import DEFAULT_BANDS
 
 
 def run_task_compute(subject_id: str, task_name: str, data_txc: np.ndarray, sfreq: float,
@@ -19,8 +20,7 @@ def run_task_compute(subject_id: str, task_name: str, data_txc: np.ndarray, sfre
     try:
         app.logger.info(f"[Task start] subject={subject_id} task={task_name} shape={data_txc.shape}")
         freqs, psd = compute_psd_welch(data_txc, sfreq=sfreq, nperseg=nperseg, noverlap=noverlap, window=window)
-        std_bands = {"delta": (1.0, 4.0), "theta": (4.0, 7.0), "alpha": alpha_band, "beta": (13.0, 30.0),
-                     "gamma": (30.0, 45.0)}
+        std_bands = DEFAULT_BANDS
         bp_abs = bandpower(psd, freqs, std_bands, relative=False)
         bp_rel = bandpower(psd, freqs, std_bands, relative=True, total_range=(1.0, 45.0))
         ent = spectral_entropy(psd, freqs, fmin=1.0, fmax=45.0, log_base=np.e)

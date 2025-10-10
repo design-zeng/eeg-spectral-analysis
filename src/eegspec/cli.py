@@ -32,7 +32,7 @@ def _main_impl(argv=None):
     sp.add_argument("--channels-file", type=str, default=None, help="Plain text, .csv or .locs")
     sp.add_argument("--alpha", type=str, default="8,13")
     sp.add_argument("--trp-baseline", type=str, default="1_rest", help="Baseline task name for TRP (default: 1_rest)")
-    sp.add_argument("--trp-mode", type=str, default="log", choices=["log", "ratio", "db"], help="TRP output mode")
+    sp.add_argument("--trp-mode", type=str, default="logratio", help="TRP output mode")
     sp.add_argument("--faa-db", action="store_true")
     sp.add_argument("--max-processors", type=int, default=4)
     add_logging_args(sp)
@@ -76,7 +76,7 @@ if __name__ == "__main__":
         "--nperseg", "1024",
         "--noverlap", "512",
         "--window", "hann",
-        "--trp-mode", "log",
+        "--trp-mode", "logratio",
         "--trp-baseline", "1_rest",
         "--alpha", "8,13",
         "--faa-db",
