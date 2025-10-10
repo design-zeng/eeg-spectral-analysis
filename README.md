@@ -1,7 +1,7 @@
 # eeg-spectral-analysis
 
-**Version**: v0.1.0  
-**Summary**: EEG spectral analysis toolkit for task‑centric JSON inputs. Computes Welch PSD and common spectral metrics (band powers, entropy, spectral moments, SEF95, median frequency, IAF, FAA). Supports subject‑major, task‑level multiprocessing and DualHandler logging.
+**Version**: v0.2.0  
+**Summary**: EEG spectral analysis toolkit for task‑centric JSON inputs. Computes Welch PSD and common spectral metrics (band powers, entropy, spectral moments, SEF95, median frequency, IAF, FAA). Supports subject‑major, task‑level multiprocessing and DualHandler logging. **Now includes group TRP plotting** (log‑ratio / log10 / dB / ratio) with hemisphere or collapsed layouts, multi‑JSON and directory aggregation.
 
 ---
 
@@ -28,7 +28,7 @@ You **should** provide channel names with **`--channels-file`**. Supported forma
 - `.locs` (EEGLAB‑style or one name per line)  
 - `.txt/.csv` (one channel name per line)
 
-***Without this parameter, the program will use build-in caps63.locs as channels***
+***Without this parameter, the program will use the built‑in `caps63.locs` as channels.***
 
 **Requirements**:
 1. The number of channel names must equal the number of columns in your JSON data (i.e., `n_channels`).  
@@ -98,7 +98,32 @@ out/
 
 ---
 
-## 6) Troubleshooting
+## 6) TRP plotting (group level)
+
+Use `plot-trp` to aggregate **multiple TRP summaries** (pass several `--summary` files) or **scan a root directory** recursively via `--summary-dir` + `--summary-glob`. The command produces **two line charts** (lower/upper alpha) with **SEM error bars** and **two‑decimal Y‑ticks**.
+
+**Supported scales**: `logratio` (natural log of ratio, paper‑style), `log10`, `db`, `ratio`.  
+**Layouts**: `hemi` (LH/RH × 5 regions) or `collapsed` (hemispheres merged → 5 regions).  
+**Band keys**: `--lower-key` / `--upper-key` (e.g., `8_10`, `10_12` or `lower_alpha`, `upper_alpha`).  
+**Merging/Filtering**: `--merge "New=Old1,Old2,..."` (repeatable; wildcards OK), `--only-merged`, `--exclude-condition` (wildcards).  
+**Montage**: provide a `.locs`, or omit to use the built‑in `caps63.locs`.  
+**Midline**: `--exclude-midline` removes `*z` electrodes before mapping/length checks.
+
+### Example A — aggregate a directory (recursive)
+```powershell
+eegspec plot-trp --summary-dir "D:\EEG\out\subjects" --summary-glob "trp_1_rest.json" --out-dir "D:\EEG\out\group" --layout collapsed --exclude-midline --mode logratio --lower-key 8_10 --upper-key 10_12 --merge "idea generation=1_idea generation,2_idea generation,3_idea generation" --merge "idea rating=1_idea rating,2_idea rating,3_idea rating" --merge "idea evolution=1_idea evolution,2_idea evolution,3_idea evolution" --exclude-condition "3_rest" --only-merged --log-level INFO --log-dir "D:\EEG\out\.logs" --log-prefix "plot_" --log-suffix "_trp"
+```
+
+### Example B — specify several files explicitly
+```powershell
+eegspec plot-trp --summary "D:\EEG\out\subjects\sub_01\trp_1_rest.json" --summary "D:\EEG\out\subjects\sub_02\trp_1_rest.json" --summary "D:\EEG\out\subjects\sub_04\trp_1_rest.json" --montage "C:\Users\123456\Documents\Github\eeg-spectral-analysis\src\eegspec\data\montages\caps63.locs" --out-dir "D:\EEG\out\group" --layout hemi --exclude-midline --mode log10 --lower-key lower_alpha --upper-key upper_alpha --only-merged --log-level DEBUG
+```
+
+> Tip: If you expect values around −0.1 to −0.5 but see ≈ −1.x, switch to `--mode log10` (since `ln R = 2.3026 × log10 R`).
+
+---
+
+## 7) Troubleshooting
 
 - **`"FAA": NaN`** → Channel names don’t include `F3` and/or `F4`, or name/shape mismatch. Fix your `--channels-file` so that it lists the correct names in the exact data order.  
 - **No outputs** → Check logs under `--log-dir` for `[Task error]` / `Analyze failed`.  
@@ -107,15 +132,16 @@ out/
 
 ---
 
-## 7) Reproducibility & logging
+## 8) Reproducibility & logging
 
 - All runs log parameters and progress via **DualHandler** (console + file).  
 - Each task’s log filename includes `{subject}_{task}` for easy filtering.  
-- `summary.json` records global parameters and file index.
+- `summary.json` records global parameters and file index.  
+- `plot-trp` reports per‑condition subject counts and lists merged condition names.
 
 ---
 
-## 8) Roadmap (optional)
+## 9) Roadmap (optional)
 
 - Optional connectivity metrics (coherence, wPLI) export in `analyze`  
 - Plotting helpers (PSD curves, connectivity heatmaps)  
@@ -123,6 +149,6 @@ out/
 
 ---
 
-## 9) License
+## 10) License
 
 This project is released under the MIT License. See `LICENSE` for details.
