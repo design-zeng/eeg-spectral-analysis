@@ -12,6 +12,7 @@ src/eegspec/dualhandler.py
 src/eegspec/faa.py
 src/eegspec/features.py
 src/eegspec/iaf.py
+src/eegspec/plot_trp.py
 src/eegspec/psd.py
 src/eegspec/trp.py
 src/eegspec/utils.py

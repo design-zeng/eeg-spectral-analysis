@@ -1,14 +1,15 @@
 # eeg-spectral-analysis
 
 **Version**: v0.2.0  
-**Summary**: EEG spectral analysis toolkit for task‑centric JSON inputs. Computes Welch PSD and common spectral metrics (band powers, entropy, spectral moments, SEF95, median frequency, IAF, FAA). Supports subject‑major, task‑level multiprocessing and DualHandler logging. **Now includes group TRP plotting** (log‑ratio / log10 / dB / ratio) with hemisphere or collapsed layouts, multi‑JSON and directory aggregation.
+**Summary**: EEG spectral analysis toolkit for task‑centric JSON/MATLAB inputs. Computes Welch PSD and common spectral metrics (band powers, entropy, spectral moments, SEF95, median frequency, IAF, FAA). Supports subject‑major, task‑level multiprocessing and DualHandler logging. **Now includes**: group TRP plotting, design creativity analysis with wPLI connectivity, graph theory features (Strength, Betweenness), and classification (SVM, MLP, KNN). Automatic 63→64 channel conversion for MATLAB data.
 
 ---
 
-## 1) Input format (task‑centric JSON)
+## 1) Input format (task‑centric JSON or MATLAB .mat)
 
-Each subject is a single JSON file whose **top‑level keys are task names**. The value is a 2‑D array with shape `n_channels × n_times` (each inner list is one channel’s time‑series). The CLI will transpose internally to `(n_times × n_channels)`.
+Each subject is a single JSON file or MATLAB .mat file whose **top‑level keys are task names**. The value is a 2‑D array with shape `n_channels × n_times` (each inner list is one channel's time‑series). The CLI will transpose internally to `(n_times × n_channels)`.
 
+**JSON format:**
 ```jsonc
 {
   "task_A": [[ch1_t1, ch1_t2, ...], [ch2_t1, ch2_t2, ...], ...],  // n_channels × n_times
@@ -17,7 +18,16 @@ Each subject is a single JSON file whose **top‑level keys are task names**. Th
 }
 ```
 
-A folder of subjects is simply a folder with many such JSON files (non‑recursive).
+**MATLAB .mat format:**
+- Variable naming: `Creativity_{subject_id}_{trial}_{state}` or `Creativity_{subject_id}_{RST}`
+- States: `IDG` (Idea Generation), `IDE` (Idea Evolution), `IDR` (Idea Rating)
+- Rest states: `RST1`, `RST2`
+- Trials: 1, 2, 3
+
+A folder of subjects can contain both JSON and MATLAB .mat files (non‑recursive). The pipeline automatically:
+- Detects file format by extension
+- Converts 63-channel data to 64-channel (interpolates Cz channel)
+- Handles dimension transformations
 
 ---
 
@@ -44,7 +54,7 @@ You **should** provide channel names with **`--channels-file`**. Supported forma
 pip install -e .
 ```
 
-> Requires: Python ≥ 3.9, NumPy, SciPy, MNE, Matplotlib.
+> Requires: Python ≥ 3.9, NumPy, SciPy, MNE, Matplotlib, NetworkX, scikit-learn.
 
 ---
 
@@ -62,7 +72,7 @@ eegspec analyze --input D:\EEG\subjects --sfreq 500 --out-dir D:\EEG\out --npers
 
 **Key parameters**
 
-- `--input` : A single subject JSON or a folder of subject JSON files  
+- `--input` : A single subject JSON/.mat file or a folder of subject files (supports both formats)  
 - `--sfreq` : Sampling rate (Hz)  
 - `--out-dir` : Output directory  
 - `--nperseg` / `--noverlap` / `--window` : Welch PSD params (defaults: 1024 / 512 / hann)  
@@ -123,7 +133,53 @@ eegspec plot-trp --summary "D:\EEG\out\subjects\sub_01\trp_1_rest.json" --summar
 
 ---
 
-## 7) Troubleshooting
+## 7) Design Creativity Analysis
+
+The `design-creativity` command implements the complete pipeline from the paper "EEG FUNCTIONAL CONNECTIVITY REVEALS NEURAL MECHANISMS OF DESIGN CREATIVITY IN ENGINEERING STUDENTS":
+
+1. **wPLI Connectivity**: Computes weighted Phase Lag Index (wPLI) for functional connectivity analysis
+2. **Graph Theory Features**: Extracts Strength and Betweenness centrality features
+3. **Classification**: Trains and evaluates SVM, MLP, and KNN classifiers
+
+**Features:**
+- Strength features in left hemisphere (central, parietal, temporal lobes) as key hubs
+- Betweenness features in right hemisphere (frontal, central lobes) indicating network information flow
+- High classification accuracy (≥87%), with SVM achieving ~92%
+
+### Example — Design Creativity Analysis
+```powershell
+eegspec design-creativity --input D:\EEG\subjects --sfreq 500 --out-dir D:\EEG\out --channels-file D:\EEG\caps63.locs --fmin 1.0 --fmax 45.0 --epoch-sec 2.0 --overlap 0.5 --max-processors 8 --log-level INFO
+```
+
+**Key parameters:**
+- `--fmin` / `--fmax` : Frequency range for connectivity analysis (default: 1.0-45.0 Hz)
+- `--epoch-sec` : Epoch length in seconds (default: 2.0)
+- `--overlap` : Overlap fraction between epochs (default: 0.5)
+- `--threshold` : Optional threshold for binarizing connectivity in betweenness computation
+- `--no-classification` : Skip classification step if only features are needed
+
+**Outputs:**
+```
+out/
+├─ subjects/
+│  ├─ sub_01/
+│  │  ├─ design_creativity_IDG_1.json    # wPLI matrix, strength, betweenness
+│  │  ├─ design_creativity_IDE_1.json
+│  │  └─ ...
+│  └─ sub_02/...
+├─ classification_results.json          # SVM, MLP, KNN results
+└─ summary.json
+```
+
+**Classification Results:**
+- Test accuracy for each classifier (SVM, MLP, KNN)
+- Cross-validation scores (mean ± std)
+- Classification reports and confusion matrices
+- Feature importance (Strength and Betweenness per channel)
+
+---
+
+## 8) Troubleshooting
 
 - **`"FAA": NaN`** → Channel names don’t include `F3` and/or `F4`, or name/shape mismatch. Fix your `--channels-file` so that it lists the correct names in the exact data order.  
 - **No outputs** → Check logs under `--log-dir` for `[Task error]` / `Analyze failed`.  
@@ -132,7 +188,7 @@ eegspec plot-trp --summary "D:\EEG\out\subjects\sub_01\trp_1_rest.json" --summar
 
 ---
 
-## 8) Reproducibility & logging
+## 9) Reproducibility & logging
 
 - All runs log parameters and progress via **DualHandler** (console + file).  
 - Each task’s log filename includes `{subject}_{task}` for easy filtering.  
@@ -141,14 +197,33 @@ eegspec plot-trp --summary "D:\EEG\out\subjects\sub_01\trp_1_rest.json" --summar
 
 ---
 
-## 9) Roadmap (optional)
+## 10) Data Format Conversion
 
-- Optional connectivity metrics (coherence, wPLI) export in `analyze`  
-- Plotting helpers (PSD curves, connectivity heatmaps)  
+The toolkit automatically handles data format conversions:
+
+**63→64 Channel Conversion:**
+- Automatically detects 63-channel data (missing Cz)
+- Interpolates Cz channel from 8 adjacent channels (FC1, FCz, FC2, C1, C2, CP1, CPz, CP2)
+- Matches MATLAB `Num_Ch_Corr.m` logic exactly
+
+**MATLAB .mat Support:**
+- Automatically loads MATLAB .mat files
+- Extracts variables following naming convention: `Creativity_{subject_id}_{trial}_{state}`
+- Converts to internal format (n_timepoints × n_channels)
+
+**Dimension Handling:**
+- Automatically detects and corrects data orientation
+- Ensures consistent format throughout the pipeline
+
+---
+## 11) Roadmap (optional)
+
+- Plotting helpers (PSD curves, connectivity heatmaps, graph visualizations)  
 - FAA channel selection flags (`--faa-left`, `--faa-right`) if your montage differs from F3/F4
+- Additional connectivity metrics (coherence, PLV) export in `analyze`
 
 ---
 
-## 10) License
+## 12) License
 
 This project is released under the MIT License. See `LICENSE` for details.

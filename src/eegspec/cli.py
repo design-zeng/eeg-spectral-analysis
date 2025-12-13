@@ -2,6 +2,7 @@ import argparse, sys, os, traceback
 from eegspec.base import BaseApp
 from eegspec.analyze import analyze_entry
 from eegspec.plot_trp import plot_trp_entry
+from eegspec.design_creativity import design_creativity_entry
 
 
 def main(argv=None):
@@ -25,8 +26,8 @@ def _main_impl(argv=None):
         sp.add_argument("--log-suffix", type=str, default="")
         sp.add_argument("--log-percentage", type=float, default=None)
 
-    sp = sub.add_parser("analyze", help="Analyze a folder of subject JSONs or a single subject JSON (task-centric).")
-    sp.add_argument("--input", required=True, help="Folder with many subject.json OR a single subject.json")
+    sp = sub.add_parser("analyze", help="Analyze a folder of subject JSONs/MAT files or a single subject file (task-centric).")
+    sp.add_argument("--input", required=True, help="Folder with many subject.json/.mat files OR a single subject.json/.mat file")
     sp.add_argument("--sfreq", type=float, required=True)
     sp.add_argument("--out-dir", required=True)
     sp.add_argument("--nperseg", type=int, default=1024)
@@ -73,6 +74,22 @@ def _main_impl(argv=None):
                     help='Exclude conditions by wildcard; can repeat. Example: --exclude-condition "3_rest" or "*_rest"')
     add_logging_args(sp)
     sp.set_defaults(func=cmd_plot_trp)
+
+    # -------- NEW 'design-creativity' --------
+    sp = sub.add_parser("design-creativity", help="Design creativity analysis using wPLI connectivity and graph features (Strength, Betweenness) with classification (SVM, MLP, KNN).")
+    sp.add_argument("--input", required=True, help="Folder with many subject.json/.mat files OR a single subject.json/.mat file")
+    sp.add_argument("--sfreq", type=float, required=True)
+    sp.add_argument("--out-dir", required=True)
+    sp.add_argument("--channels-file", type=str, default=None, help="Plain text, .csv or .locs")
+    sp.add_argument("--fmin", type=float, default=1.0, help="Minimum frequency for connectivity (default: 1.0 Hz)")
+    sp.add_argument("--fmax", type=float, default=45.0, help="Maximum frequency for connectivity (default: 45.0 Hz)")
+    sp.add_argument("--epoch-sec", type=float, default=2.0, help="Epoch length in seconds (default: 2.0)")
+    sp.add_argument("--overlap", type=float, default=0.5, help="Overlap fraction between epochs (default: 0.5)")
+    sp.add_argument("--threshold", type=float, default=None, help="Threshold for binarizing connectivity in betweenness computation")
+    sp.add_argument("--max-processors", type=int, default=4)
+    sp.add_argument("--no-classification", action="store_true", help="Skip classification step")
+    add_logging_args(sp)
+    sp.set_defaults(func=cmd_design_creativity)
 
     args = p.parse_args(argv)
     return args.func(args)
@@ -132,6 +149,33 @@ def cmd_plot_trp(args):
         app.logger.info(f"TRP figures written to {args.out_dir}")
     except Exception as e:
         app.logger.error(f"Plot-TRP failed: {e}")
+        app.logger.debug(traceback.format_exc())
+        raise
+
+
+def cmd_design_creativity(args):
+    app = BaseApp(log_level=args.log_level, log_dir=args.log_dir, log_prefix=args.log_prefix,
+                  log_suffix=args.log_suffix, log_percentage=args.log_percentage)
+    app.logger.info("Design Creativity entry")
+    try:
+        design_creativity_entry(
+            input_path=args.input,
+            sfreq=args.sfreq,
+            out_dir=args.out_dir,
+            channels_file=args.channels_file,
+            fmin=args.fmin,
+            fmax=args.fmax,
+            epoch_sec=args.epoch_sec,
+            overlap=args.overlap,
+            threshold=args.threshold,
+            max_processors=args.max_processors,
+            run_classification=not args.no_classification,
+            log_kwargs=dict(log_level=args.log_level, log_dir=args.log_dir, log_prefix=args.log_prefix,
+                            log_suffix=args.log_suffix, log_percentage=args.log_percentage),
+        )
+        app.logger.info(f"Design creativity analysis written to {args.out_dir}")
+    except Exception as e:
+        app.logger.error(f"Design Creativity failed: {e}")
         app.logger.debug(traceback.format_exc())
         raise
 
