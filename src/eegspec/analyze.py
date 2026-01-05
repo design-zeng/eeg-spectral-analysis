@@ -62,6 +62,7 @@ def run_task_compute(subject_id: str, task_name: str, data_txc: np.ndarray, sfre
 def analyze_entry(input_path: str, sfreq: float, out_dir: str,
                   nperseg: int = 1024, noverlap: int = None, window: str = "hann",
                   channels_file: str = None,
+                  n_channels: int = None,
                   alpha: str = "8,13", faa_db: bool = False,
                   trp_mode: str = "ratio", trp_baseline: str = "rest",
                   max_processors: int = 4,
@@ -85,9 +86,21 @@ def analyze_entry(input_path: str, sfreq: float, out_dir: str,
     for spath in subjects:
         sid = subject_id_from_path(spath)
         try:
-            tasks = load_subject_tasks_json(spath)  # task -> (n_times, n_channels)
+            # Step 1: Load data (disable auto-convert here, we'll handle it based on user's n_channels)
+            tasks = load_subject_tasks_json(spath, auto_convert_63_to_64=False)  # task -> (n_times, n_channels)
+            
+            # Step 2: Convert channels if user specified expected dimension
+            # This happens BEFORE resolve_channels to ensure channel names match converted data
+            if n_channels is not None:
+                from eegspec.utils import convert_channels_if_needed
+                tasks = convert_channels_if_needed(tasks, expected_n_channels=n_channels, logger=app.logger)
+            
+            # Step 3: Get channel count AFTER conversion (if any)
             sample_task = next(iter(tasks.values()))
-            n_ch = sample_task.shape[1]
+            n_ch = sample_task.shape[1]  # n_channels after potential conversion
+            
+            # Step 4: Resolve channel names based on FINAL channel count
+            # This ensures channels match the converted data
             ch_names = resolve_channels(channels_file, n_channels=n_ch)
             if len(ch_names) != n_ch:
                 app.logger.warning(f"Channel count mismatch for {sid}: using placeholders Ch1..Ch{n_ch}")

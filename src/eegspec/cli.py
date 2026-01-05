@@ -34,6 +34,7 @@ def _main_impl(argv=None):
     sp.add_argument("--noverlap", type=int, default=None)
     sp.add_argument("--window", type=str, default="hann")
     sp.add_argument("--channels-file", type=str, default=None, help="Plain text, .csv or .locs")
+    sp.add_argument("--n-channels", type=int, default=None, help="Expected number of channels. If specified and differs from data, conversion will be performed (e.g., 63→64)")
     sp.add_argument("--alpha", type=str, default="8,13")
     sp.add_argument("--trp-baseline", type=str, default="1_rest", help="Baseline task name for TRP (default: 1_rest)")
     sp.add_argument("--trp-mode", type=str, default="logratio", help="TRP output mode")
@@ -76,18 +77,16 @@ def _main_impl(argv=None):
     sp.set_defaults(func=cmd_plot_trp)
 
     # -------- NEW 'design-creativity' --------
-    sp = sub.add_parser("design-creativity", help="Design creativity analysis using wPLI connectivity and graph features (Strength, Betweenness) with classification (SVM, MLP, KNN).")
-    sp.add_argument("--input", required=True, help="Folder with many subject.json/.mat files OR a single subject.json/.mat file")
-    sp.add_argument("--sfreq", type=float, required=True)
-    sp.add_argument("--out-dir", required=True)
-    sp.add_argument("--channels-file", type=str, default=None, help="Plain text, .csv or .locs")
-    sp.add_argument("--fmin", type=float, default=1.0, help="Minimum frequency for connectivity (default: 1.0 Hz)")
-    sp.add_argument("--fmax", type=float, default=45.0, help="Maximum frequency for connectivity (default: 45.0 Hz)")
-    sp.add_argument("--epoch-sec", type=float, default=2.0, help="Epoch length in seconds (default: 2.0)")
-    sp.add_argument("--overlap", type=float, default=0.5, help="Overlap fraction between epochs (default: 0.5)")
-    sp.add_argument("--threshold", type=float, default=None, help="Threshold for binarizing connectivity in betweenness computation")
-    sp.add_argument("--max-processors", type=int, default=4)
-    sp.add_argument("--no-classification", action="store_true", help="Skip classification step")
+    sp = sub.add_parser("design-creativity", help="Design creativity analysis using wPLI connectivity and graph features (Strength, Betweenness) with classification (SVM, MLP, KNN). Matches MATLAB Connectivity_Analysis.m exactly.")
+    sp.add_argument("--input", required=True, help="Input path: folder containing Data_Creativity_Sub_*.mat files (Creativity_EEG_Dataset) OR folder with subject.json/.mat files OR single file")
+    sp.add_argument("--sfreq", type=float, default=500.0, help="Sampling frequency (Hz), default: 500.0")
+    sp.add_argument("--out-dir", required=True, help="Output directory for results")
+    sp.add_argument("--channels-file", type=str, default=None, help="Channel names file (.locs, .txt, .csv). If not provided, uses built-in caps63.locs")
+    sp.add_argument("--n-channels", type=int, default=None, help="Expected number of channels. If specified and differs from data, conversion will be performed (e.g., 63→64)")
+    sp.add_argument("--freq-range", type=str, default="8,13", help="Frequency range for filtering as 'low,high' (Hz), default: '8,13' (alpha band)")
+    sp.add_argument("--threshold", type=float, default=0.2, help="Threshold for filtering weak connections in betweenness computation (default: 0.2)")
+    sp.add_argument("--max-processors", type=int, default=4, help="Maximum number of parallel workers (default: 4)")
+    sp.add_argument("--no-classification", action="store_true", help="Skip classification step if only features are needed")
     add_logging_args(sp)
     sp.set_defaults(func=cmd_design_creativity)
 
@@ -108,6 +107,7 @@ def cmd_analyze(args):
             noverlap=args.noverlap,
             window=args.window,
             channels_file=args.channels_file,
+            n_channels=args.n_channels,
             alpha=args.alpha,
             faa_db=args.faa_db,
             trp_baseline=args.trp_baseline,
@@ -158,15 +158,19 @@ def cmd_design_creativity(args):
                   log_suffix=args.log_suffix, log_percentage=args.log_percentage)
     app.logger.info("Design Creativity entry")
     try:
+        # Parse frequency range
+        freq_range_parts = args.freq_range.split(",")
+        if len(freq_range_parts) != 2:
+            raise ValueError(f"Invalid freq-range format: {args.freq_range}. Expected 'low,high' (e.g., '8,13')")
+        freq_range = (float(freq_range_parts[0].strip()), float(freq_range_parts[1].strip()))
+        
         design_creativity_entry(
             input_path=args.input,
             sfreq=args.sfreq,
             out_dir=args.out_dir,
             channels_file=args.channels_file,
-            fmin=args.fmin,
-            fmax=args.fmax,
-            epoch_sec=args.epoch_sec,
-            overlap=args.overlap,
+            n_channels=args.n_channels,
+            freq_range=freq_range,
             threshold=args.threshold,
             max_processors=args.max_processors,
             run_classification=not args.no_classification,

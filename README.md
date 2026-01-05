@@ -77,6 +77,7 @@ eegspec analyze --input D:\EEG\subjects --sfreq 500 --out-dir D:\EEG\out --npers
 - `--out-dir` : Output directory  
 - `--nperseg` / `--noverlap` / `--window` : Welch PSD params (defaults: 1024 / 512 / hann)  
 - `--channels-file` : Channel list file (`.locs` / `.txt`)  
+- `--n-channels` : Expected number of channels. If specified and differs from data, conversion will be performed (e.g., `--n-channels 64` to convert 63→64)  
 - `--alpha` : Alpha band for FAA and bandpowers (default `8,13`)  
 - `--faa-db` : Compute FAA as dB difference (otherwise natural log difference)  
 - `--max-processors` : Max concurrent tasks  
@@ -148,15 +149,18 @@ The `design-creativity` command implements the complete pipeline from the paper 
 
 ### Example — Design Creativity Analysis
 ```powershell
-eegspec design-creativity --input D:\EEG\subjects --sfreq 500 --out-dir D:\EEG\out --channels-file D:\EEG\caps63.locs --fmin 1.0 --fmax 45.0 --epoch-sec 2.0 --overlap 0.5 --max-processors 8 --log-level INFO
+eegspec design-creativity --input Z:\Creativity_EEG_Dataset --sfreq 500 --out-dir Z:\results --channels-file D:\EEG\caps63.locs --n-channels 64 --freq-range "8,13" --threshold 0.2 --max-processors 8 --log-level INFO --log-dir Z:\results\.logs --log-prefix creativity_ --log-suffix _analysis
 ```
 
 **Key parameters:**
-- `--fmin` / `--fmax` : Frequency range for connectivity analysis (default: 1.0-45.0 Hz)
-- `--epoch-sec` : Epoch length in seconds (default: 2.0)
-- `--overlap` : Overlap fraction between epochs (default: 0.5)
-- `--threshold` : Optional threshold for binarizing connectivity in betweenness computation
+- `--input` : Folder containing `Data_Creativity_Sub_*.mat` files (Creativity_EEG_Dataset) OR folder with subject.json/.mat files OR single file
+- `--sfreq` : Sampling frequency (Hz), default: 500.0
+- `--channels-file` : Channel names file (.locs, .txt, .csv). If not provided, uses built-in caps63.locs
+- `--n-channels` : Expected number of channels. If specified and differs from data, conversion will be performed (e.g., `--n-channels 64` to convert 63→64)
+- `--freq-range` : Frequency range for filtering as `"low,high"` (Hz), default: `"8,13"` (alpha band)
+- `--threshold` : Threshold for filtering weak connections in betweenness computation (default: 0.2)
 - `--no-classification` : Skip classification step if only features are needed
+- Logging: `--log-level`, `--log-dir`, `--log-prefix`, `--log-suffix`, `--log-percentage`
 
 **Outputs:**
 ```

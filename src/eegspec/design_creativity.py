@@ -23,113 +23,137 @@ import json
 from typing import Dict, List, Tuple, Optional, Any
 from eegspec.base import BaseApp
 from eegspec.utils import load_subject_tasks_json, list_subject_jsons, subject_id_from_path, resolve_channels, save_json
-from eegspec.connectivity import compute_wpli, extract_graph_features
+from eegspec.connectivity import connectivity_analysis, compute_wpli, extract_graph_features
 from eegspec.classification import train_classifiers, get_classification_summary, print_classification_report
+
+
+def _ensure_float64_in_dict(obj: Any) -> Any:
+    """
+    Recursively convert numeric values in a dictionary/list to maintain 64-bit precision.
+    
+    When loading from JSON, Python's json.load() returns numbers as Python float
+    (which is 64-bit), but we need to ensure they're explicitly handled as float64
+    for consistency with our calculations.
+    
+    Parameters:
+    -----------
+    obj : Any
+        Object (dict, list, or scalar) to convert
+    
+    Returns:
+    --------
+    Any
+        Object with numeric arrays converted to maintain 64-bit precision
+    """
+    if isinstance(obj, dict):
+        return {k: _ensure_float64_in_dict(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        # Check if it's a list of numbers (array-like)
+        if len(obj) > 0:
+            # Try to convert to numpy array with float64 to check if numeric
+            try:
+                arr = np.array(obj, dtype=np.float64)
+                # If conversion successful and it's numeric, return as list
+                # Python float is 64-bit, so this preserves precision
+                if np.issubdtype(arr.dtype, np.number):
+                    return arr.tolist()  # Returns list of Python floats (64-bit)
+                else:
+                    # Recursively process nested lists
+                    return [_ensure_float64_in_dict(item) for item in obj]
+            except (ValueError, TypeError):
+                # Not a numeric array, recursively process
+                return [_ensure_float64_in_dict(item) for item in obj]
+        else:
+            return obj
+    elif isinstance(obj, (int, float)):
+        # Python float is already 64-bit, int can be arbitrary precision
+        return float(obj) if isinstance(obj, (int, float)) else obj
+    else:
+        return obj
 
 
 def compute_design_creativity_features(
     data: np.ndarray,
-    sfreq: float,
-    fmin: float = 1.0,
-    fmax: float = 45.0,
-    epoch_sec: float = 2.0,
-    overlap: float = 0.5,
-    threshold: Optional[float] = None,
+    sfreq: float = 500.0,
+    freq_range: Tuple[float, float] = (8.0, 13.0),
+    threshold: float = 0.2,
 ) -> Dict[str, np.ndarray]:
     """
     Compute design creativity features from EEG data.
     
-    This function implements the feature extraction pipeline from the paper:
-    1. Compute wPLI connectivity matrix
-    2. Extract Strength and Betweenness graph features
+    This function matches MATLAB Connectivity_Analysis.m exactly:
+    - fs = 500 Hz (default)
+    - freq_range = [8, 13] (alpha band, default)
+    - threshold = 0.2 (default)
+    - Uses full data length (L=round(n/1)=n)
+    - Strength from original wPLI matrix
+    - Betweenness from thresholded wPLI matrix
     
     Parameters:
     -----------
     data : np.ndarray
-        EEG data of shape (n_times, n_channels)
+        EEG data of shape (n_channels, n_times) - MATLAB format
+        or (n_times, n_channels) - will be auto-transposed
     sfreq : float
-        Sampling frequency
-    fmin : float
-        Minimum frequency for connectivity analysis (default: 1.0 Hz)
-    fmax : float
-        Maximum frequency for connectivity analysis (default: 45.0 Hz)
-    epoch_sec : float
-        Epoch length in seconds (default: 2.0)
-    overlap : float
-        Overlap fraction between epochs (default: 0.5)
-    threshold : Optional[float]
-        Threshold for binarizing connectivity matrix in betweenness computation
+        Sampling frequency (Hz), default: 500.0
+    freq_range : Tuple[float, float]
+        Frequency range for filtering [low, high] (Hz), default: (8.0, 13.0)
+    threshold : float
+        Threshold for filtering weak connections, default: 0.2
     
     Returns:
     --------
     Dict[str, np.ndarray]
         Dictionary containing:
-        - 'wpli': wPLI connectivity matrix (n_channels, n_channels)
-        - 'strength': Strength features (n_channels,)
-        - 'betweenness': Betweenness features (n_channels,)
+        - 'wpli_matrix': Full wPLI connectivity matrix (n_channels, n_channels)
+        - 'thresholded_wpli': Thresholded wPLI matrix (n_channels, n_channels)
+        - 'strength': Strength features (row vector: 1, n_channels)
+        - 'betweenness': Betweenness features (row vector: 1, n_channels)
+        - 'features': Combined features [betweenness, strength] (row vector: 1, 2*n_channels)
     """
-    # Step 1: Compute wPLI connectivity matrix
-    wpli_matrix = compute_wpli(
-        data=data,
-        sfreq=sfreq,
-        fmin=fmin,
-        fmax=fmax,
-        epoch_sec=epoch_sec,
-        overlap=overlap,
-    )
-    
-    # Step 2: Extract graph theory features
-    graph_features = extract_graph_features(
-        connectivity_matrix=wpli_matrix,
+    # Use connectivity_analysis which matches MATLAB exactly
+    result = connectivity_analysis(
+        eeg_signal=data,
+        fs=sfreq,
+        freq_range=freq_range,
         threshold=threshold,
     )
     
-    return {
-        'wpli': wpli_matrix,
-        'strength': graph_features['strength'],
-        'betweenness': graph_features['betweenness'],
-    }
+    return result
 
 
 def run_design_creativity_analysis(
     subject_id: str,
     task_name: str,
     data_txc: np.ndarray,
-    sfreq: float,
-    ch_names: List[str],
-    fmin: float = 1.0,
-    fmax: float = 45.0,
-    epoch_sec: float = 2.0,
-    overlap: float = 0.5,
-    threshold: Optional[float] = None,
+    sfreq: float = 500.0,
+    ch_names: Optional[List[str]] = None,
+    freq_range: Tuple[float, float] = (8.0, 13.0),
+    threshold: float = 0.2,
     out_dir: str = ".",
     log_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Run complete design creativity analysis for a single task.
     
+    This function matches MATLAB Connectivity_Analysis.m logic exactly.
+    
     Parameters:
     -----------
     subject_id : str
         Subject identifier
     task_name : str
-        Task name (e.g., 'IDG', 'IDE', 'IDR', 'RST')
+        Task name (e.g., 'IDG_1', 'IDE_2', 'IDR_3', 'RST1')
     data_txc : np.ndarray
-        EEG data of shape (n_times, n_channels)
+        EEG data of shape (n_times, n_channels) or (n_channels, n_times)
     sfreq : float
-        Sampling frequency
-    ch_names : List[str]
-        Channel names
-    fmin : float
-        Minimum frequency (default: 1.0 Hz)
-    fmax : float
-        Maximum frequency (default: 45.0 Hz)
-    epoch_sec : float
-        Epoch length in seconds (default: 2.0)
-    overlap : float
-        Overlap fraction (default: 0.5)
-    threshold : Optional[float]
-        Threshold for betweenness computation
+        Sampling frequency (Hz), default: 500.0
+    ch_names : Optional[List[str]]
+        Channel names (optional)
+    freq_range : Tuple[float, float]
+        Frequency range for filtering [low, high] (Hz), default: (8.0, 13.0)
+    threshold : float
+        Threshold for filtering weak connections, default: 0.2
     out_dir : str
         Output directory
     log_kwargs : Optional[Dict[str, Any]]
@@ -147,14 +171,25 @@ def run_design_creativity_analysis(
     try:
         app.logger.info(f"[Design Creativity] subject={subject_id} task={task_name} shape={data_txc.shape}")
         
-        # Compute features
+        # Ensure data is in (n_channels, n_times) format for connectivity_analysis
+        # data_txc comes as (n_times, n_channels) from load_subject_tasks_json
+        # connectivity_analysis expects (n_channels, n_times) - MATLAB format
+        # Ensure 64-bit precision (matching MATLAB double)
+        data_txc = np.asarray(data_txc, dtype=np.float64)
+        if data_txc.shape[0] > data_txc.shape[1] and data_txc.shape[0] > 200:
+            # Likely (n_times, n_channels), transpose to (n_channels, n_times)
+            data_for_connectivity = data_txc.T
+        else:
+            # Already (n_channels, n_times)
+            data_for_connectivity = data_txc
+        
+        app.logger.debug(f"Data shape for connectivity: {data_for_connectivity.shape} (should be n_channels × n_times)")
+        
+        # Compute features using MATLAB-exact logic
         features = compute_design_creativity_features(
-            data=data_txc,
+            data=data_for_connectivity,
             sfreq=sfreq,
-            fmin=fmin,
-            fmax=fmax,
-            epoch_sec=epoch_sec,
-            overlap=overlap,
+            freq_range=freq_range,
             threshold=threshold,
         )
         
@@ -164,20 +199,24 @@ def run_design_creativity_analysis(
         
         output_path = os.path.join(subj_dir, f"design_creativity_{task_name}.json")
         
+        # Ensure all arrays are float64 before converting to list
+        # This preserves 64-bit precision when saving to JSON
         output_data = {
             "subject": subject_id,
             "task": task_name,
-            "wpli": features['wpli'].tolist(),
-            "strength": features['strength'].tolist(),
-            "betweenness": features['betweenness'].tolist(),
-            "channels": ch_names,
-            "fmin": fmin,
-            "fmax": fmax,
-            "epoch_sec": epoch_sec,
-            "overlap": overlap,
+            "wpli_matrix": np.asarray(features['wpli_matrix'], dtype=np.float64).tolist(),
+            "thresholded_wpli": np.asarray(features['thresholded_wpli'], dtype=np.float64).tolist(),
+            "strength": np.asarray(features['strength'], dtype=np.float64).tolist(),
+            "betweenness": np.asarray(features['betweenness'], dtype=np.float64).tolist(),
+            "features": np.asarray(features['features'], dtype=np.float64).tolist(),  # Combined [betweenness, strength]
+            "channels": ch_names if ch_names else [],
+            "sfreq": float(sfreq),
+            "freq_range": [float(freq_range[0]), float(freq_range[1])],
+            "threshold": float(threshold),
         }
         
-        save_json(output_data, output_path)
+        # Save with precision preservation
+        save_json(output_data, output_path, preserve_precision=True)
         
         app.logger.info(f"[Design Creativity done] subject={subject_id} task={task_name} -> {output_path}")
         
@@ -256,6 +295,8 @@ def prepare_classification_data(
             try:
                 with open(filepath, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                # Ensure all numeric values are loaded with 64-bit precision
+                data = _ensure_float64_in_dict(data)
                 
                 task_name = data.get("task", "")
                 # Map task name to class label
@@ -270,11 +311,15 @@ def prepare_classification_data(
                     continue
                 
                 # Extract features (strength + betweenness)
-                strength = np.array(data["strength"])
-                betweenness = np.array(data["betweenness"])
+                # These are stored as row vectors (1, n_channels) from connectivity_analysis
+                # Ensure 64-bit precision (matching MATLAB double)
+                strength = np.array(data["strength"], dtype=np.float64).flatten()  # Flatten to 1D
+                betweenness = np.array(data["betweenness"], dtype=np.float64).flatten()  # Flatten to 1D
                 
-                # Combine features
-                features = np.concatenate([strength, betweenness])
+                # Combine features: [betweenness, strength] matching MATLAB Features = [betweenness strength_values]
+                features = np.concatenate([betweenness, strength])
+                # Ensure float64
+                features = np.asarray(features, dtype=np.float64)
                 
                 X_list.append(features)
                 y_list.append(label)
@@ -286,29 +331,33 @@ def prepare_classification_data(
     if len(X_list) == 0:
         raise ValueError("No valid feature files found")
     
-    X = np.array(X_list)
+    # Ensure 64-bit precision (matching MATLAB double)
+    X = np.array(X_list, dtype=np.float64)
     y = np.array(y_list)
     
     # Feature names
-    n_channels = len(strength)
-    feature_names = (
-        [f"strength_{i}" for i in range(n_channels)] +
-        [f"betweenness_{i}" for i in range(n_channels)]
-    )
+    # Features are [betweenness, strength] matching MATLAB Features = [betweenness strength_values]
+    # So order is: betweenness_0...betweenness_n, strength_0...strength_n
+    if len(X_list) > 0:
+        n_channels = len(strength) if hasattr(strength, '__len__') else X.shape[1] // 2
+        feature_names = (
+            [f"betweenness_{i}" for i in range(n_channels)] +
+            [f"strength_{i}" for i in range(n_channels)]
+        )
+    else:
+        feature_names = []
     
     return X, y, feature_names
 
 
 def design_creativity_entry(
     input_path: str,
-    sfreq: float,
-    out_dir: str,
+    sfreq: float = 500.0,
+    out_dir: str = ".",
     channels_file: Optional[str] = None,
-    fmin: float = 1.0,
-    fmax: float = 45.0,
-    epoch_sec: float = 2.0,
-    overlap: float = 0.5,
-    threshold: Optional[float] = None,
+    n_channels: Optional[int] = None,
+    freq_range: Tuple[float, float] = (8.0, 13.0),
+    threshold: float = 0.2,
     max_processors: int = 4,
     run_classification: bool = True,
     log_kwargs: Optional[Dict[str, Any]] = None,
@@ -316,37 +365,38 @@ def design_creativity_entry(
     """
     Main entry point for design creativity analysis pipeline.
     
-    This function implements the complete pipeline from the paper:
-    1. Compute wPLI connectivity for each task
+    This function implements the complete pipeline matching MATLAB Connectivity_Analysis.m:
+    1. Compute wPLI connectivity for each task (fs=500, freq_range=[8,13], threshold=0.2)
     2. Extract Strength and Betweenness features
     3. Train and evaluate classifiers (SVM, MLP, KNN)
+    
+    Supports Creativity_EEG_Dataset directory structure:
+    - Input: E:\Creativity_EEG_Dataset\Data_Creativity_Sub_*.mat
+    - Variables: Creativity_{subject_id}_{trial}_{state} or Creativity_{subject_id}_{RST}
     
     Parameters:
     -----------
     input_path : str
-        Path to folder of subject JSONs or single subject JSON
+        Path to folder containing Data_Creativity_Sub_*.mat files or single .mat file
+        or folder of subject JSONs or single subject JSON
     sfreq : float
-        Sampling frequency
+        Sampling frequency (Hz), default: 500.0
     out_dir : str
-        Output directory
+        Output directory, default: "."
     channels_file : Optional[str]
-        Path to channels file
-    fmin : float
-        Minimum frequency (default: 1.0 Hz)
-    fmax : float
-        Maximum frequency (default: 45.0 Hz)
-    epoch_sec : float
-        Epoch length in seconds (default: 2.0)
-    overlap : float
-        Overlap fraction (default: 0.5)
-    threshold : Optional[float]
-        Threshold for betweenness computation
+        Path to channels file (.locs, .txt, .csv)
+    n_channels : Optional[int]
+        Expected number of channels. If specified and differs from data, conversion will be performed (e.g., 63→64)
+    freq_range : Tuple[float, float]
+        Frequency range for filtering [low, high] (Hz), default: (8.0, 13.0)
+    threshold : float
+        Threshold for filtering weak connections, default: 0.2
     max_processors : int
         Maximum number of processors (default: 4)
     run_classification : bool
         Whether to run classification (default: True)
     log_kwargs : Optional[Dict[str, Any]]
-        Logging parameters
+        Logging parameters (log_level, log_dir, log_prefix, log_suffix, log_percentage)
     
     Returns:
     --------
@@ -374,12 +424,27 @@ def design_creativity_entry(
     for spath in subjects:
         sid = subject_id_from_path(spath)
         try:
-            tasks = load_subject_tasks_json(spath)
+            # Step 1: Load data (disable auto-convert here, we'll handle it based on user's n_channels)
+            tasks = load_subject_tasks_json(spath, auto_convert_63_to_64=False)
+            
+            # Step 2: Convert channels if user specified expected dimension
+            # This happens BEFORE resolve_channels to ensure channel names match converted data
+            if n_channels is not None:
+                from eegspec.utils import convert_channels_if_needed
+                tasks = convert_channels_if_needed(tasks, expected_n_channels=n_channels, logger=app.logger)
+            
+            # Step 3: Get channel count AFTER conversion (if any)
             sample_task = next(iter(tasks.values()))
-            n_ch = sample_task.shape[1]
+            n_ch = sample_task.shape[1]  # n_channels after potential conversion
+            
+            # Step 4: Resolve channel names based on FINAL channel count
+            # This ensures channels match the converted data
             ch_names = resolve_channels(channels_file, n_channels=n_ch)
             if len(ch_names) != n_ch:
-                app.logger.warning(f"Channel count mismatch for {sid}: using placeholders Ch1..Ch{n_ch}")
+                app.logger.warning(f"Channel count mismatch for {sid}: expected {n_ch}, got {len(ch_names)}. Using placeholders Ch1..Ch{n_ch}")
+                ch_names = [f"Ch{i+1}" for i in range(n_ch)]
+            
+            # Step 4: Schedule all tasks for this subject
             for tname, data in tasks.items():
                 schedule.append((sid, tname, data, ch_names))
         except Exception as e:
@@ -388,10 +453,8 @@ def design_creativity_entry(
     summary = {
         "subjects": {},
         "sfreq": sfreq,
-        "fmin": fmin,
-        "fmax": fmax,
-        "epoch_sec": epoch_sec,
-        "overlap": overlap,
+        "freq_range": list(freq_range),
+        "threshold": threshold,
     }
     
     total = len(schedule)
@@ -414,7 +477,7 @@ def design_creativity_entry(
             fut = ex.submit(
                 run_design_creativity_analysis,
                 sid, tname, data, sfreq, ch,
-                fmin, fmax, epoch_sec, overlap, threshold,
+                freq_range, threshold,
                 out_dir, task_log_kwargs
             )
             futures.append(fut)
@@ -448,7 +511,7 @@ def design_creativity_entry(
                         ex.submit(
                             run_design_creativity_analysis,
                             sid, tname, data, sfreq, ch,
-                            fmin, fmax, epoch_sec, overlap, threshold,
+                            freq_range, threshold,
                             out_dir, task_log_kwargs
                         )
                     )
