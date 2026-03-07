@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eegspec"
-version = "0.2.0"
+version = "0.3.0"
 description = "EEG spectral toolkit: folder/file JSON (task-centric per subject), Welch PSD & metrics (bandpower/entropy/moments/SEF/F50/IAF/FAA), multiprocessing scheduler, DualHandler logging."
 readme = "README.md"
 requires-python = ">=3.9"

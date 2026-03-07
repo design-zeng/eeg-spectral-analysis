@@ -1,6 +1,6 @@
 # eeg-spectral-analysis
 
-**Version**: v0.2.0  
+**Version**: v0.3.0  
 **Summary**: EEG spectral analysis toolkit for task‑centric JSON/MATLAB inputs. Computes Welch PSD and common spectral metrics (band powers, entropy, spectral moments, SEF95, median frequency, IAF, FAA). Supports subject‑major, task‑level multiprocessing and DualHandler logging. **Now includes**: group TRP plotting, design creativity analysis with wPLI connectivity, graph theory features (Strength, Betweenness), and classification (SVM, MLP, KNN). Automatic 63→64 channel conversion for MATLAB data.
 
 ---
