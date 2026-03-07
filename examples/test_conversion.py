@@ -1,10 +1,10 @@
 """
-测试脚本：验证Python实现与MATLAB逻辑的一致性
+Test script: verify Python implementation matches MATLAB logic.
 
-此脚本用于：
-1. 验证转换函数的正确性
-2. 对比Python和MATLAB的结果（如果可用）
-3. 检查数值精度
+This script:
+1. Verifies conversion correctness
+2. Compares with MATLAB results (if available)
+3. Checks numerical precision
 """
 
 import numpy as np
@@ -14,209 +14,209 @@ import os
 
 
 def test_basic_conversion():
-    """测试基本转换功能"""
+    """Test basic conversion."""
     print("=" * 60)
-    print("测试1：基本转换功能")
+    print("Test 1: Basic conversion")
     print("=" * 60)
     
-    # 创建测试数据
+    # Create test data
     np.random.seed(42)
     test_data = np.random.randn(63, 1000).astype(np.float64)
     
-    # 执行转换
+    # Convert
     result = num_ch_corr(test_data)
     
-    # 检查维度
-    assert result.shape == (64, 1000), f"维度错误：期望(64, 1000)，得到{result.shape}"
-    print("✓ 维度检查通过")
+    # Check shape
+    assert result.shape == (64, 1000), f"Shape error: expected (64, 1000), got {result.shape}"
+    print("✓ Shape check passed")
     
-    # 检查前23个通道
-    assert np.allclose(result[0:23, :], test_data[0:23, :]), "前23个通道不匹配"
-    print("✓ 前23个通道检查通过")
+    # Check channels 1-23
+    assert np.allclose(result[0:23, :], test_data[0:23, :]), "Channels 1-23 mismatch"
+    print("✓ Channels 1-23 check passed")
     
-    # 检查Cz通道
+    # Check Cz channel
     expected_cz = (test_data[6] + test_data[38] + test_data[27] + test_data[39] + 
                    test_data[56] + test_data[11] + test_data[52] + test_data[22]) / 8.0
-    assert np.allclose(result[23, :], expected_cz), "Cz通道不匹配"
-    print("✓ Cz通道检查通过")
+    assert np.allclose(result[23, :], expected_cz), "Cz channel mismatch"
+    print("✓ Cz channel check passed")
     
-    # 检查后40个通道
-    assert np.allclose(result[24:64, :], test_data[23:63, :]), "后40个通道不匹配"
-    print("✓ 后40个通道检查通过")
+    # Check channels 25-64
+    assert np.allclose(result[24:64, :], test_data[23:63, :]), "Channels 25-64 mismatch"
+    print("✓ Channels 25-64 check passed")
     
-    print("\n所有基本测试通过！\n")
+    print("\nAll basic tests passed!\n")
 
 
 def test_verify_function():
-    """测试验证函数"""
+    """Test verification function."""
     print("=" * 60)
-    print("测试2：验证函数")
+    print("Test 2: Verification function")
     print("=" * 60)
     
-    # 创建测试数据
+    # Create test data
     np.random.seed(123)
     test_data = np.random.randn(63, 500).astype(np.float64)
     
-    # 执行转换
+    # Convert
     converted = num_ch_corr(test_data)
     
-    # 使用验证函数
+    # Use verification function
     is_valid, report = verify_conversion(test_data, converted)
     
-    assert is_valid, "验证失败"
-    print("✓ 验证函数测试通过")
-    print(f"  报告摘要：")
+    assert is_valid, "Verification failed"
+    print("✓ Verification function test passed")
+    print(f"  Report summary:")
     for check_name, check_result in report.items():
-        if isinstance(check_result, dict) and '通过' in check_result:
-            status = "✓" if check_result['通过'] else "✗"
+        if isinstance(check_result, dict) and 'passed' in check_result:
+            status = "✓" if check_result['passed'] else "✗"
             print(f"    {status} {check_name}")
     
-    print("\n验证函数测试通过！\n")
+    print("\nVerification function test passed!\n")
 
 
 def test_edge_cases():
-    """测试边界情况"""
+    """Test edge cases."""
     print("=" * 60)
-    print("测试3：边界情况")
+    print("Test 3: Edge cases")
     print("=" * 60)
     
-    # 测试1：最小时间点数
+    # Test 1: minimal time points
     test_data = np.random.randn(63, 1).astype(np.float64)
     result = num_ch_corr(test_data)
-    assert result.shape == (64, 1), "最小时间点数测试失败"
-    print("✓ 最小时间点数测试通过")
+    assert result.shape == (64, 1), "Minimal time points test failed"
+    print("✓ Minimal time points test passed")
     
-    # 测试2：大时间点数
+    # Test 2: large time points
     test_data = np.random.randn(63, 100000).astype(np.float64)
     result = num_ch_corr(test_data)
-    assert result.shape == (64, 100000), "大时间点数测试失败"
-    print("✓ 大时间点数测试通过")
+    assert result.shape == (64, 100000), "Large time points test failed"
+    print("✓ Large time points test passed")
     
-    # 测试3：全零数据
+    # Test 3: all zeros
     test_data = np.zeros((63, 100), dtype=np.float64)
     result = num_ch_corr(test_data)
-    assert np.allclose(result, np.zeros((64, 100))), "全零数据测试失败"
-    print("✓ 全零数据测试通过")
+    assert np.allclose(result, np.zeros((64, 100))), "All zeros test failed"
+    print("✓ All zeros test passed")
     
-    # 测试4：全一数据
+    # Test 4: all ones
     test_data = np.ones((63, 100), dtype=np.float64)
     result = num_ch_corr(test_data)
-    assert np.allclose(result, np.ones((64, 100))), "全一数据测试失败"
-    print("✓ 全一数据测试通过")
+    assert np.allclose(result, np.ones((64, 100))), "All ones test failed"
+    print("✓ All ones test passed")
     
-    # 测试5：错误输入维度
+    # Test 5: invalid input (already 64 channels)
     try:
-        wrong_data = np.random.randn(64, 100)  # 已经是64通道
+        wrong_data = np.random.randn(64, 100)
         num_ch_corr(wrong_data)
-        assert False, "应该抛出错误"
+        assert False, "Should have raised an error"
     except ValueError as e:
-        print(f"✓ 错误输入检测通过: {e}")
+        print(f"✓ Invalid input detection passed: {e}")
     
-    print("\n边界情况测试通过！\n")
+    print("\nEdge case tests passed!\n")
 
 
 def test_numerical_precision():
-    """测试数值精度"""
+    """Test numerical precision."""
     print("=" * 60)
-    print("测试4：数值精度")
+    print("Test 4: Numerical precision")
     print("=" * 60)
     
-    # 创建测试数据
+    # Create test data
     np.random.seed(42)
     test_data = np.random.randn(63, 1000).astype(np.float64)
     
-    # 执行转换
+    # Convert
     result = num_ch_corr(test_data)
     
-    # 验证精度
+    # Verify precision
     is_valid, report = verify_conversion(test_data, result, tolerance=1e-10)
     
     if is_valid:
-        print("✓ 数值精度测试通过（容差: 1e-10）")
+        print("✓ Numerical precision test passed (tolerance: 1e-10)")
     else:
-        print("✗ 数值精度测试失败")
-        print("  详细报告：")
+        print("✗ Numerical precision test failed")
+        print("  Detailed report:")
         for check_name, check_result in report.items():
             print(f"    {check_name}: {check_result}")
     
-    # 检查最大差异
-    max_diff_1_23 = report['前23通道检查']['最大差异']
-    max_diff_cz = report['Cz通道检查']['最大差异']
-    max_diff_25_64 = report['后40通道检查']['最大差异']
+    # Check max diffs
+    max_diff_1_23 = report['channels_1_23_check']['max_diff']
+    max_diff_cz = report['cz_channel_check']['max_diff']
+    max_diff_25_64 = report['channels_25_64_check']['max_diff']
     
-    print(f"  前23通道最大差异: {max_diff_1_23:.2e}")
-    print(f"  Cz通道最大差异: {max_diff_cz:.2e}")
-    print(f"  后40通道最大差异: {max_diff_25_64:.2e}")
+    print(f"  Channels 1-23 max diff: {max_diff_1_23:.2e}")
+    print(f"  Cz channel max diff: {max_diff_cz:.2e}")
+    print(f"  Channels 25-64 max diff: {max_diff_25_64:.2e}")
     
-    print("\n数值精度测试完成！\n")
+    print("\nNumerical precision test done!\n")
 
 
 def test_real_data_if_available():
-    """如果真实数据可用，测试真实数据"""
+    """Test with real data if available."""
     print("=" * 60)
-    print("测试5：真实数据（如果可用）")
+    print("Test 5: Real data (if available)")
     print("=" * 60)
     
     data_directory = "."
     subject_id = 1
     
     try:
-        # 尝试加载真实数据
+        # Try to load real data
         data_63ch = load_creativity_data(data_directory, subject_id)
         
-        print(f"✓ 成功加载参与者 {subject_id} 的数据")
-        print(f"  数据状态: {list(data_63ch.keys())}")
+        print(f"✓ Loaded subject {subject_id} data")
+        print(f"  States: {list(data_63ch.keys())}")
         
-        # 转换所有状态
+        # Convert all states
         data_64ch = convert_all_channels(data_63ch)
         
-        print(f"✓ 成功转换所有状态")
+        print(f"✓ Successfully converted all states")
         
-        # 验证每个状态
+        # Verify each state
         for state in data_63ch.keys():
             is_valid, report = verify_conversion(data_63ch[state], data_64ch[state])
             status = "✓" if is_valid else "✗"
             print(f"  {status} {state}: {data_63ch[state].shape} -> {data_64ch[state].shape}")
         
-        print("\n真实数据测试完成！\n")
+        print("\nReal data test done!\n")
         
     except FileNotFoundError:
-        print(f"⚠ 数据文件未找到，跳过真实数据测试")
-        print(f"  预期路径: {os.path.join(data_directory, 'Creativity_EEG_Dataset', f'Data_Creativity_Sub_{subject_id}.mat')}")
+        print(f"⚠ Data file not found, skipping real data test")
+        print(f"  Expected: {os.path.join(data_directory, 'Creativity_EEG_Dataset', f'Data_Creativity_Sub_{subject_id}.mat')}")
         print()
     except Exception as e:
-        print(f"✗ 真实数据测试出错: {e}")
+        print(f"✗ Real data test error: {e}")
         print()
 
 
 def compare_with_matlab_result():
-    """如果MATLAB结果可用，进行对比"""
+    """Compare with MATLAB results if available."""
     print("=" * 60)
-    print("测试6：与MATLAB结果对比（如果可用）")
+    print("Test 6: MATLAB comparison (if available)")
     print("=" * 60)
     
-    # 这里假设有一个MATLAB处理后的结果文件
+    # Path to MATLAB result
     matlab_result_file = "./matlab_results/Data_Creativity_Sub_1_64ch.mat"
     
     if not os.path.exists(matlab_result_file):
-        print("⚠ MATLAB结果文件未找到，跳过对比测试")
-        print(f"  预期路径: {matlab_result_file}")
+        print("⚠ MATLAB result file not found, skipping comparison")
+        print(f"  Expected: {matlab_result_file}")
         print()
         return
     
     try:
-        # 加载MATLAB结果
+        # Load MATLAB result
         matlab_data = sio.loadmat(matlab_result_file)
         
-        # 加载Python处理的原始数据
+        # Load Python-processed data
         data_directory = "."
         python_data_63ch = load_creativity_data(data_directory, 1)
         python_data_64ch = convert_all_channels(python_data_63ch)
         
-        # 对比结果
-        print("对比结果：")
+        # Compare results
+        print("Comparison results:")
         for key in python_data_64ch.keys():
-            # 构建MATLAB变量名
+            # Build MATLAB variable name
             if key in ['RST1', 'RST2']:
                 matlab_key = f'Creativity_1_{key}'
             else:
@@ -227,32 +227,32 @@ def compare_with_matlab_result():
                 python_result = python_data_64ch[key]
                 matlab_result = matlab_data[matlab_key]
                 
-                # 检查维度
+                # Check shape
                 if python_result.shape != matlab_result.shape:
-                    print(f"  ✗ {key}: 维度不匹配")
+                    print(f"  ✗ {key}: Shape mismatch")
                     print(f"    Python: {python_result.shape}, MATLAB: {matlab_result.shape}")
                     continue
                 
-                # 检查数值
+                # Compare values
                 max_diff = np.max(np.abs(python_result - matlab_result))
                 is_close = np.allclose(python_result, matlab_result, atol=1e-10)
                 
                 status = "✓" if is_close else "✗"
-                print(f"  {status} {key}: 最大差异 = {max_diff:.2e}")
+                print(f"  {status} {key}: max diff = {max_diff:.2e}")
             else:
-                print(f"  ⚠ {key}: MATLAB结果中未找到对应变量")
+                print(f"  ⚠ {key}: Variable not found in MATLAB result")
         
-        print("\nMATLAB对比测试完成！\n")
+        print("\nMATLAB comparison test done!\n")
         
     except Exception as e:
-        print(f"✗ MATLAB对比测试出错: {e}")
+        print(f"✗ MATLAB comparison error: {e}")
         print()
 
 
 def run_all_tests():
-    """运行所有测试"""
+    """Run all tests."""
     print("\n" + "=" * 60)
-    print("开始运行所有测试")
+    print("Running all tests")
     print("=" * 60 + "\n")
     
     test_basic_conversion()
@@ -263,7 +263,7 @@ def run_all_tests():
     compare_with_matlab_result()
     
     print("=" * 60)
-    print("所有测试完成！")
+    print("All tests completed!")
     print("=" * 60 + "\n")
 
 

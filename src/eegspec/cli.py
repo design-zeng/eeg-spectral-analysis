@@ -3,6 +3,7 @@ from eegspec.base import BaseApp
 from eegspec.analyze import analyze_entry
 from eegspec.plot_trp import plot_trp_entry
 from eegspec.design_creativity import design_creativity_entry
+from eegspec.statistical_analysis import run_statistical_analysis
 
 
 def main(argv=None):
@@ -89,6 +90,15 @@ def _main_impl(argv=None):
     sp.add_argument("--no-classification", action="store_true", help="Skip classification step if only features are needed")
     add_logging_args(sp)
     sp.set_defaults(func=cmd_design_creativity)
+
+    # -------- statistical-analysis --------
+    sp = sub.add_parser("statistical-analysis", help="Run ANOVA and pairwise comparisons on design creativity results")
+    sp.add_argument("--results-dir", required=True, help="Directory containing subjects/ with design_creativity_*.json files")
+    sp.add_argument("--out-dir", default=None, help="Output directory (default: same as results-dir)")
+    sp.add_argument("--alpha", type=float, default=0.05, help="Significance level (default: 0.05)")
+    sp.add_argument("--pairwise", type=str, default="tukey", choices=["tukey", "bonferroni"])
+    add_logging_args(sp)
+    sp.set_defaults(func=cmd_statistical_analysis)
 
     args = p.parse_args(argv)
     return args.func(args)
@@ -184,44 +194,25 @@ def cmd_design_creativity(args):
         raise
 
 
+def cmd_statistical_analysis(args):
+    app = BaseApp(log_level=args.log_level, log_dir=args.log_dir, log_prefix=args.log_prefix,
+                  log_suffix=args.log_suffix, log_percentage=args.log_percentage)
+    app.logger.info("Statistical analysis entry")
+    try:
+        run_statistical_analysis(
+            results_dir=args.results_dir,
+            out_dir=args.out_dir,
+            alpha=args.alpha,
+            pairwise_method=args.pairwise,
+            log_kwargs=dict(log_level=args.log_level, log_dir=args.log_dir, log_prefix=args.log_prefix,
+                            log_suffix=args.log_suffix, log_percentage=args.log_percentage),
+        )
+        app.logger.info("Statistical analysis complete")
+    except Exception as e:
+        app.logger.error(f"Statistical analysis failed: {e}")
+        app.logger.debug(traceback.format_exc())
+        raise
+
+
 if __name__ == "__main__":
-    debug_args = [
-        "analyze",
-        "--input",
-        r"D:\EEG-signals-respond-differently-to-three-modes-of-thinking-in-a-loosely-controlled-experiment\clean_data\sub_01.json",
-        "--sfreq", "500",
-        "--out-dir", r"D:\EEG\out",
-        "--nperseg", "1024",
-        "--noverlap", "512",
-        "--window", "hann",
-        "--trp-mode", "logratio",
-        "--trp-baseline", "1_rest",
-        "--alpha", "8,13",
-        "--faa-db",
-        "--max-processors", "8",
-        "--log-level", "DEBUG",
-        "--log-dir", r"D:\EEG\out\.logs",
-        "--log-prefix", "run_",
-        "--log-suffix", "_alpha",
-        "--log-percentage", "0.8",
-    ]
-    plt_debug_args = [
-        "plot-trp",
-        "--summary-dir", r"D:\EEG\out\subjects",
-        "--summary-glob", "trp_1_rest.json",
-        "--out-dir", r"D:\EEG\out\group",
-        "--layout", "collapsed",
-        "--exclude-midline",
-        "--mode", "logratio",
-        "--lower-key", "lower_alpha", "--upper-key", "upper_alpha",
-        "--merge", "idea generation=1_idea generation,2_idea generation,3_idea generation",
-        "--merge", "idea rating=1_idea rating,2_idea rating,3_idea rating",
-        "--merge", "idea evolution=1_idea evolution,2_idea evolution,3_idea evolution",
-        "--exclude-condition", "3_rest",
-        "--only-merged",
-        "--log-level", "INFO",
-        "--log-dir", r"D:\EEG\out\.logs",
-        "--log-prefix", "plot_",
-        "--log-suffix", "_trp",
-    ]
-    sys.exit(main(plt_debug_args))
+    sys.exit(main())

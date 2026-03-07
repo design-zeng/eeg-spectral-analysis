@@ -62,12 +62,12 @@ pip install -e .
 
 ### Single subject
 ```powershell
-eegspec analyze --input D:\EEG\sub_01.json --sfreq 500 --out-dir D:\EEG\out --nperseg 1024 --noverlap 512 --window hann --channels-file D:\EEG\caps63.locs --alpha 8,13 --faa-db --max-processors 8 --log-level DEBUG --log-dir D:\EEG\out\.logs --log-prefix run_ --log-suffix _alpha --log-percentage 0.8
+eegspec analyze --input ./data/sub_01.json --sfreq 500 --out-dir ./output --nperseg 1024 --noverlap 512 --window hann --channels-file ./caps63.locs --alpha 8,13 --faa-db --max-processors 8 --log-level INFO
 ```
 
 ### Folder of subjects
 ```powershell
-eegspec analyze --input D:\EEG\subjects --sfreq 500 --out-dir D:\EEG\out --nperseg 1024 --noverlap 512 --window hann --channels-file D:\EEG\caps63.locs --alpha 8,13 --faa-db --max-processors 8 --log-level INFO --log-dir D:\EEG\out\.logs
+eegspec analyze --input ./data/subjects --sfreq 500 --out-dir ./output --nperseg 1024 --noverlap 512 --window hann --channels-file ./caps63.locs --alpha 8,13 --faa-db --max-processors 8
 ```
 
 **Key parameters**
@@ -122,12 +122,12 @@ Use `plot-trp` to aggregate **multiple TRP summaries** (pass several `--summary`
 
 ### Example A — aggregate a directory (recursive)
 ```powershell
-eegspec plot-trp --summary-dir "D:\EEG\out\subjects" --summary-glob "trp_1_rest.json" --out-dir "D:\EEG\out\group" --layout collapsed --exclude-midline --mode logratio --lower-key 8_10 --upper-key 10_12 --merge "idea generation=1_idea generation,2_idea generation,3_idea generation" --merge "idea rating=1_idea rating,2_idea rating,3_idea rating" --merge "idea evolution=1_idea evolution,2_idea evolution,3_idea evolution" --exclude-condition "3_rest" --only-merged --log-level INFO --log-dir "D:\EEG\out\.logs" --log-prefix "plot_" --log-suffix "_trp"
+eegspec plot-trp --summary-dir ./output/subjects --summary-glob "trp_1_rest.json" --out-dir ./output/group --layout collapsed --exclude-midline --mode logratio --lower-key 8_10 --upper-key 10_12 --merge "idea generation=1_idea generation,2_idea generation,3_idea generation" --merge "idea rating=1_idea rating,2_idea rating,3_idea rating" --merge "idea evolution=1_idea evolution,2_idea evolution,3_idea evolution" --exclude-condition "3_rest" --only-merged
 ```
 
 ### Example B — specify several files explicitly
 ```powershell
-eegspec plot-trp --summary "D:\EEG\out\subjects\sub_01\trp_1_rest.json" --summary "D:\EEG\out\subjects\sub_02\trp_1_rest.json" --summary "D:\EEG\out\subjects\sub_04\trp_1_rest.json" --montage "C:\Users\123456\Documents\Github\eeg-spectral-analysis\src\eegspec\data\montages\caps63.locs" --out-dir "D:\EEG\out\group" --layout hemi --exclude-midline --mode log10 --lower-key lower_alpha --upper-key upper_alpha --only-merged --log-level DEBUG
+eegspec plot-trp --summary ./output/subjects/sub_01/trp_1_rest.json --summary ./output/subjects/sub_02/trp_1_rest.json --out-dir ./output/group --layout hemi --exclude-midline --mode log10 --lower-key lower_alpha --upper-key upper_alpha --only-merged
 ```
 
 > Tip: If you expect values around −0.1 to −0.5 but see ≈ −1.x, switch to `--mode log10` (since `ln R = 2.3026 × log10 R`).
@@ -149,7 +149,12 @@ The `design-creativity` command implements the complete pipeline from the paper 
 
 ### Example — Design Creativity Analysis
 ```powershell
-eegspec design-creativity --input Z:\Creativity_EEG_Dataset --sfreq 500 --out-dir Z:\results --channels-file D:\EEG\caps63.locs --n-channels 64 --freq-range "8,13" --threshold 0.2 --max-processors 8 --log-level INFO --log-dir Z:\results\.logs --log-prefix creativity_ --log-suffix _analysis
+eegspec design-creativity --input ./Creativity_EEG_Dataset --sfreq 500 --out-dir ./results --channels-file ./src/eegspec/data/montages/caps63.locs --n-channels 64 --freq-range "8,13" --threshold 0.2 --max-processors 8 --log-level INFO --log-dir ./results/.logs --log-prefix creativity_ --log-suffix _analysis
+```
+
+Or with relative paths (channels file optional; built-in caps63.locs used if omitted):
+```powershell
+eegspec design-creativity --input ./data --sfreq 500 --out-dir ./output --n-channels 64 --freq-range "8,13" --threshold 0.2 --max-processors 8
 ```
 
 **Key parameters:**
@@ -219,8 +224,20 @@ The toolkit automatically handles data format conversions:
 - Automatically detects and corrects data orientation
 - Ensures consistent format throughout the pipeline
 
+**MATLAB Compatibility:**
+- Design creativity pipeline matches MATLAB `Connectivity_Analysis.m`: wPLI, Strength, Betweenness (weight=1/wPLI, unnormalized)
+- Strength correlates ~1.0 with MATLAB; Betweenness correlates ~0.87 (small wPLI differences affect graph structure)
+
 ---
-## 11) Roadmap (optional)
+## 11) Examples
+
+Basic usage examples are in `examples/`:
+- `example.py` — PSD, bandpower, FAA from eegspec
+- `eeg_channel_conversion.py` — 63→64 channel conversion (standalone)
+- `example_usage.py` — Channel conversion usage examples
+
+---
+## 12) Roadmap (optional)
 
 - Plotting helpers (PSD curves, connectivity heatmaps, graph visualizations)  
 - FAA channel selection flags (`--faa-left`, `--faa-right`) if your montage differs from F3/F4
@@ -228,6 +245,6 @@ The toolkit automatically handles data format conversions:
 
 ---
 
-## 12) License
+## 13) License
 
 This project is released under the MIT License. See `LICENSE` for details.

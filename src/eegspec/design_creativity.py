@@ -25,6 +25,7 @@ from eegspec.base import BaseApp
 from eegspec.utils import load_subject_tasks_json, list_subject_jsons, subject_id_from_path, resolve_channels, save_json
 from eegspec.connectivity import connectivity_analysis, compute_wpli, extract_graph_features
 from eegspec.classification import train_classifiers, get_classification_summary, print_classification_report
+from eegspec.statistics import statistical_analysis_pipeline
 
 
 def _ensure_float64_in_dict(obj: Any) -> Any:
@@ -77,6 +78,9 @@ def compute_design_creativity_features(
     sfreq: float = 500.0,
     freq_range: Tuple[float, float] = (8.0, 13.0),
     threshold: float = 0.2,
+    *,
+    export_intermediates_dir: Optional[str] = None,
+    logger: Optional[Any] = None,
 ) -> Dict[str, np.ndarray]:
     """
     Compute design creativity features from EEG data.
@@ -117,6 +121,8 @@ def compute_design_creativity_features(
         fs=sfreq,
         freq_range=freq_range,
         threshold=threshold,
+        export_intermediates_dir=export_intermediates_dir,
+        logger=logger,
     )
     
     return result
@@ -131,6 +137,7 @@ def run_design_creativity_analysis(
     freq_range: Tuple[float, float] = (8.0, 13.0),
     threshold: float = 0.2,
     out_dir: str = ".",
+    export_intermediates: Optional[str] = None,
     log_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
@@ -186,11 +193,18 @@ def run_design_creativity_analysis(
         app.logger.debug(f"Data shape for connectivity: {data_for_connectivity.shape} (should be n_channels × n_times)")
         
         # Compute features using MATLAB-exact logic
+        # If requested, export pairwise intermediates into a per-task directory
+        export_dir = None
+        if export_intermediates:
+            export_dir = os.path.join(export_intermediates, subject_id, task_name)
+
         features = compute_design_creativity_features(
             data=data_for_connectivity,
             sfreq=sfreq,
             freq_range=freq_range,
             threshold=threshold,
+            export_intermediates_dir=export_dir,
+            logger=app.logger,
         )
         
         # Save results
@@ -266,8 +280,12 @@ def prepare_classification_data(
         - feature_names: List of feature names
     """
     if task_mapping is None:
-        # Default mapping based on paper
+        # Default mapping based on paper - more flexible matching
         task_mapping = {
+            'idg': 'IDG',
+            'ide': 'IDE',
+            'idr': 'IDR',
+            'rst': 'RST',
             'idea generation': 'IDG',
             'idea evolution': 'IDE',
             'idea rating': 'IDR',
@@ -360,6 +378,11 @@ def design_creativity_entry(
     threshold: float = 0.2,
     max_processors: int = 4,
     run_classification: bool = True,
+    run_statistical_analysis: bool = False,
+    stat_k_features: Optional[int] = None,
+    stat_alpha: float = 0.05,
+    stat_pairwise_method: str = 'tukey',
+    debug: bool = False,
     log_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
@@ -406,17 +429,36 @@ def design_creativity_entry(
     if log_kwargs is None:
         log_kwargs = {}
     app = BaseApp(**log_kwargs)
-    
+
     os.makedirs(out_dir, exist_ok=True)
-    
-    # Load subjects
+
+    # Top-level try/except to capture any unexpected exceptions and write
+    # a traceback file into the output directory for easier debugging on remote runs.
     try:
+        # Load subjects
         subjects = list_subject_jsons(input_path)
         if not subjects:
             raise FileNotFoundError("No JSON files found under input path")
-        app.logger.info(f"Found {len(subjects)} subject file(s)")
+        
+        # Debug mode: only process first file
+        if debug:
+            subjects = subjects[:1]
+            app.logger.info(f"[DEBUG MODE] Processing only first file: {subjects[0] if subjects else 'N/A'}")
+            app.logger.info(f"Found {len(subjects)} subject file(s) (debug mode: limited to 1)")
+        else:
+            app.logger.info(f"Found {len(subjects)} subject file(s)")
     except Exception as e:
+        import traceback as _tb
+        tb = _tb.format_exc()
         app.logger.error(f"Failed to enumerate input: {e}")
+        # Write traceback to out_dir for remote inspection
+        try:
+            errpath = os.path.join(out_dir, 'design_creativity_error.log')
+            with open(errpath, 'w', encoding='utf-8') as _f:
+                _f.write(tb)
+            app.logger.error(f"Traceback written to {errpath}")
+        except Exception:
+            pass
         raise
     
     # Schedule tasks
@@ -458,7 +500,10 @@ def design_creativity_entry(
     }
     
     total = len(schedule)
-    app.logger.info(f"Total tasks to run: {total} (max_processors={max_processors})")
+    if debug:
+        app.logger.info(f"Total tasks to run: {total} (debug mode: max_processors={max_processors}, single-threaded)")
+    else:
+        app.logger.info(f"Total tasks to run: {total} (max_processors={max_processors})")
     
     if total == 0:
         save_json(summary, os.path.join(out_dir, "summary.json"))
@@ -478,7 +523,7 @@ def design_creativity_entry(
                 run_design_creativity_analysis,
                 sid, tname, data, sfreq, ch,
                 freq_range, threshold,
-                out_dir, task_log_kwargs
+                out_dir, None, task_log_kwargs
             )
             futures.append(fut)
         
@@ -512,7 +557,7 @@ def design_creativity_entry(
                             run_design_creativity_analysis,
                             sid, tname, data, sfreq, ch,
                             freq_range, threshold,
-                            out_dir, task_log_kwargs
+                            out_dir, None, task_log_kwargs
                         )
                     )
                 app.logger.info(f"Progress: {done_count}/{total}")
@@ -545,6 +590,54 @@ def design_creativity_entry(
             app.logger.info(f"Classification results saved to {classification_path}")
         except Exception as e:
             app.logger.warning(f"Classification failed: {e}")
+            import traceback
+            app.logger.debug(traceback.format_exc())
+    
+    # Run statistical analysis if requested
+    if run_statistical_analysis:
+        try:
+            app.logger.info("Preparing data for statistical analysis...")
+            X, y, feature_names = prepare_classification_data(out_dir)
+            app.logger.info(f"Statistical analysis data: {X.shape}, labels: {np.unique(y, return_counts=True)}")
+            
+            app.logger.info("Running statistical analysis pipeline...")
+            stat_results = statistical_analysis_pipeline(
+                X, y,
+                feature_names=feature_names,
+                k=stat_k_features,
+                alpha=stat_alpha,
+                pairwise_method=stat_pairwise_method,
+                logger=app.logger,
+            )
+            
+            # Save statistical analysis results
+            stat_path = os.path.join(out_dir, "statistical_analysis_results.json")
+            # Convert numpy arrays to lists for JSON serialization
+            stat_results_json = {
+                'feature_selection': {
+                    'selected_features': stat_results['feature_selection']['selected_features'],
+                    'selected_feature_names': stat_results['feature_selection']['selected_feature_names'],
+                    'f_scores': stat_results['feature_selection']['f_scores'],
+                    'p_values': stat_results['feature_selection']['p_values'],
+                    'selected_f_scores': stat_results['feature_selection']['selected_f_scores'],
+                    'selected_p_values': stat_results['feature_selection']['selected_p_values'],
+                },
+                'anova': stat_results['anova'],
+                'pairwise_comparisons': stat_results['pairwise_comparisons'],
+                'summary': stat_results['summary'],
+            }
+            save_json(stat_results_json, stat_path)
+            
+            app.logger.info(f"Statistical analysis results saved to {stat_path}")
+            app.logger.info(f"Selected {stat_results['summary']['n_selected_features']} features out of {stat_results['summary']['n_total_features']}")
+            
+            summary["statistical_analysis"] = {
+                "results_path": stat_path,
+                "n_selected_features": stat_results['summary']['n_selected_features'],
+                "selected_feature_names": stat_results['feature_selection']['selected_feature_names'],
+            }
+        except Exception as e:
+            app.logger.warning(f"Statistical analysis failed: {e}")
             import traceback
             app.logger.debug(traceback.format_exc())
     

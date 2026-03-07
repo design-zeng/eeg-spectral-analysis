@@ -1,7 +1,7 @@
 """
-EEG通道转换使用示例
+EEG channel conversion usage examples.
 
-本文件展示了如何使用eeg_channel_conversion模块进行数据转换
+Demonstrates how to use the eeg_channel_conversion module.
 """
 
 import numpy as np
@@ -15,58 +15,55 @@ from eeg_channel_conversion import (
 
 
 def example_1_single_signal():
-    """示例1：转换单个信号"""
+    """Example 1: Convert a single 63-channel signal to 64 channels."""
     print("=" * 60)
-    print("示例1：转换单个63通道信号为64通道")
+    print("Example 1: Convert 63-channel signal to 64 channels")
     print("=" * 60)
     
-    # 创建模拟的63通道数据
-    # 在实际使用中，这应该是从文件加载的真实数据
+    # Create simulated 63-channel data
     np.random.seed(42)
     signal_63ch = np.random.randn(63, 1000).astype(np.float64)
     
-    print(f"输入数据维度: {signal_63ch.shape}")
+    print(f"Input shape: {signal_63ch.shape}")
     
-    # 执行转换
+    # Convert
     signal_64ch = num_ch_corr(signal_63ch)
     
-    print(f"输出数据维度: {signal_64ch.shape}")
-    print("✓ 转换完成\n")
+    print(f"Output shape: {signal_64ch.shape}")
+    print("✓ Conversion complete\n")
 
 
 def example_2_load_and_convert():
-    """示例2：加载真实数据并转换"""
+    """Example 2: Load and convert real data."""
     print("=" * 60)
-    print("示例2：加载真实数据并转换")
+    print("Example 2: Load and convert real data")
     print("=" * 60)
     
-    # 数据目录（根据实际情况修改）
+    # Data directory (adjust as needed)
     data_dir = "."
     subject_id = 1
     
     try:
-        # 加载数据
-        print(f"正在加载参与者 {subject_id} 的数据...")
+        # Load data
+        print(f"Loading subject {subject_id} data...")
         data_63ch = load_creativity_data(data_dir, subject_id)
         
-        print(f"✓ 成功加载，包含以下状态: {list(data_63ch.keys())}")
+        print(f"✓ Loaded successfully. States: {list(data_63ch.keys())}")
         
-        # 显示每个状态的维度
-        print("\n原始数据维度（63通道）:")
+        print("\nOriginal data (63 channels):")
         for state, signal in data_63ch.items():
             print(f"  {state:10s}: {signal.shape}")
         
-        # 转换为64通道
-        print("\n正在转换为64通道...")
+        print("\nConverting to 64 channels...")
         data_64ch = convert_all_channels(data_63ch)
         
-        print("✓ 转换完成")
-        print("\n转换后数据维度（64通道）:")
+        print("✓ Conversion complete")
+        print("\nConverted data (64 channels):")
         for state, signal in data_64ch.items():
             print(f"  {state:10s}: {signal.shape}")
         
-        # 验证转换结果
-        print("\n验证转换结果...")
+        # Verify conversion
+        print("\nVerifying conversion...")
         first_state = list(data_63ch.keys())[0]
         is_valid, report = verify_conversion(
             data_63ch[first_state], 
@@ -74,96 +71,94 @@ def example_2_load_and_convert():
         )
         
         if is_valid:
-            print(f"✓ {first_state} 验证通过")
+            print(f"✓ {first_state} verified")
         else:
-            print(f"✗ {first_state} 验证失败")
-            print("  详细报告:", report)
+            print(f"✗ {first_state} verification failed")
+            print("  Report:", report)
         
     except FileNotFoundError as e:
-        print(f"✗ 数据文件未找到: {e}")
-        print("  请确保数据文件路径正确")
+        print(f"✗ Data file not found: {e}")
+        print("  Ensure the data path is correct.")
     except Exception as e:
-        print(f"✗ 发生错误: {e}")
+        print(f"✗ Error: {e}")
     
     print()
 
 
 def example_3_batch_processing():
-    """示例3：批量处理多个参与者"""
+    """Example 3: Batch process multiple subjects."""
     print("=" * 60)
-    print("示例3：批量处理多个参与者")
+    print("Example 3: Batch process multiple subjects")
     print("=" * 60)
     
     data_dir = "."
     
-    # 处理前3个参与者（示例）
+    # Process first 3 subjects (example)
     subject_ids = [1, 2, 3]
     
-    print(f"正在处理参与者: {subject_ids}")
-    print("（注意：这会处理所有状态的数据）\n")
+    print(f"Processing subjects: {subject_ids}")
+    print("(Processes all states for each subject)\n")
     
     try:
         all_data = process_all_subjects(
             data_dir=data_dir,
             subject_ids=subject_ids,
-            save_output=False  # 设置为True以保存结果
+            save_output=False  # Set True to save results
         )
         
-        print(f"\n✓ 成功处理 {len(all_data)} 个参与者")
+        print(f"\n✓ Successfully processed {len(all_data)} subjects")
         
-        # 显示统计信息
         for subject_id, data in all_data.items():
-            print(f"\n参与者 {subject_id}:")
+            print(f"\nSubject {subject_id}:")
             for state, signal in data.items():
                 print(f"  {state:10s}: {signal.shape}")
         
     except Exception as e:
-        print(f"✗ 批量处理出错: {e}")
+        print(f"✗ Batch processing error: {e}")
     
     print()
 
 
 def example_4_verify_specific_channel():
-    """示例4：验证特定通道"""
+    """Example 4: Verify specific channel conversion."""
     print("=" * 60)
-    print("示例4：验证特定通道的转换")
+    print("Example 4: Verify specific channel conversion")
     print("=" * 60)
     
-    # 创建测试数据
+    # Create test data
     np.random.seed(123)
     signal_63ch = np.random.randn(63, 500).astype(np.float64)
     
-    # 转换
     signal_64ch = num_ch_corr(signal_63ch)
     
-    # 验证前23个通道
-    print("验证前23个通道（应该完全一致）:")
+    # Verify channels 1-23
+    print("Verify channels 1-23 (should match exactly):")
     diff_1_23 = np.max(np.abs(signal_64ch[0:23, :] - signal_63ch[0:23, :]))
-    print(f"  最大差异: {diff_1_23:.2e}")
-    print(f"  {'✓ 通过' if diff_1_23 < 1e-10 else '✗ 失败'}")
+    print(f"  Max diff: {diff_1_23:.2e}")
+    print(f"  {'✓ Passed' if diff_1_23 < 1e-10 else '✗ Failed'}")
     
-    # 验证Cz通道
-    print("\n验证Cz通道（第24个通道，插值得到）:")
+    # Verify Cz channel
+    print("\nVerify Cz channel (ch 24, interpolated):")
     expected_cz = (signal_63ch[6] + signal_63ch[38] + signal_63ch[27] + 
                    signal_63ch[39] + signal_63ch[56] + signal_63ch[11] + 
                    signal_63ch[52] + signal_63ch[22]) / 8.0
     diff_cz = np.max(np.abs(signal_64ch[23, :] - expected_cz))
-    print(f"  最大差异: {diff_cz:.2e}")
-    print(f"  {'✓ 通过' if diff_cz < 1e-10 else '✗ 失败'}")
+    print(f"  Max diff: {diff_cz:.2e}")
+    print(f"  {'✓ Passed' if diff_cz < 1e-10 else '✗ Failed'}")
     
-    # 验证后40个通道
-    print("\n验证后40个通道（原24-63映射到25-64）:")
+    # Verify channels 25-64
+    print("\nVerify channels 25-64 (original 24-63 mapped to 25-64):")
     diff_25_64 = np.max(np.abs(signal_64ch[24:64, :] - signal_63ch[23:63, :]))
-    print(f"  最大差异: {diff_25_64:.2e}")
-    print(f"  {'✓ 通过' if diff_25_64 < 1e-10 else '✗ 失败'}")
+    print(f"  Max diff: {diff_25_64:.2e}")
+    print(f"  {'✓ Passed' if diff_25_64 < 1e-10 else '✗ Failed'}")
     
     print()
 
 
 def example_5_save_converted_data():
-    """示例5：保存转换后的数据"""
+    """Example 5: Save converted data."""
     print("=" * 60)
-    print("示例5：保存转换后的数据")
+    print("Example 5: Save converted data")
     print("=" * 60)
     
     import scipy.io as sio
@@ -174,14 +169,14 @@ def example_5_save_converted_data():
     output_dir = "./output_64ch"
     
     try:
-        # 加载和转换数据
+        # Load and convert
         data_63ch = load_creativity_data(data_dir, subject_id)
         data_64ch = convert_all_channels(data_63ch)
         
-        # 创建输出目录
+        # Create output dir
         os.makedirs(output_dir, exist_ok=True)
         
-        # 准备保存的数据（使用原始变量名格式）
+        # Prepare save dict with original variable names
         save_dict = {}
         for key, value in data_64ch.items():
             if key in ['RST1', 'RST2']:
@@ -191,25 +186,25 @@ def example_5_save_converted_data():
                 var_name = f'Creativity_{subject_id}_{trial}_{state}'
             save_dict[var_name] = value
         
-        # 保存为MAT文件
+        # Save as MAT file
         output_file = os.path.join(output_dir, f'Data_Creativity_Sub_{subject_id}_64ch.mat')
         sio.savemat(output_file, save_dict)
         
-        print(f"✓ 数据已保存到: {output_file}")
-        print(f"  包含 {len(save_dict)} 个变量")
+        print(f"✓ Data saved to: {output_file}")
+        print(f"  Contains {len(save_dict)} variables")
         
     except Exception as e:
-        print(f"✗ 保存数据时出错: {e}")
+        print(f"✗ Error saving data: {e}")
     
     print()
 
 
 if __name__ == "__main__":
     print("\n" + "=" * 60)
-    print("EEG通道转换使用示例")
+    print("EEG Channel Conversion Examples")
     print("=" * 60 + "\n")
     
-    # 运行所有示例
+    # Run all examples
     example_1_single_signal()
     example_2_load_and_convert()
     example_3_batch_processing()
@@ -217,6 +212,6 @@ if __name__ == "__main__":
     example_5_save_converted_data()
     
     print("=" * 60)
-    print("所有示例运行完成！")
+    print("All examples completed!")
     print("=" * 60 + "\n")
 

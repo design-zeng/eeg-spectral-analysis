@@ -66,6 +66,7 @@ def analyze_entry(input_path: str, sfreq: float, out_dir: str,
                   alpha: str = "8,13", faa_db: bool = False,
                   trp_mode: str = "ratio", trp_baseline: str = "rest",
                   max_processors: int = 4,
+                  debug: bool = False,
                   log_kwargs: Dict[str, Any] = None) -> Dict[str, Any]:
     if log_kwargs is None:
         log_kwargs = dict(log_level="INFO", log_dir=None, log_prefix="", log_suffix="", log_percentage=None)
@@ -76,7 +77,14 @@ def analyze_entry(input_path: str, sfreq: float, out_dir: str,
         subjects = list_subject_jsons(input_path)
         if not subjects:
             raise FileNotFoundError("No JSON files found under input path")
-        app.logger.info(f"Found {len(subjects)} subject file(s)")
+        
+        # Debug mode: only process first file
+        if debug:
+            subjects = subjects[:1]
+            app.logger.info(f"[DEBUG MODE] Processing only first file: {subjects[0] if subjects else 'N/A'}")
+            app.logger.info(f"Found {len(subjects)} subject file(s) (debug mode: limited to 1)")
+        else:
+            app.logger.info(f"Found {len(subjects)} subject file(s)")
     except Exception as e:
         app.logger.error(f"Failed to enumerate input: {e}")
         raise
@@ -111,7 +119,10 @@ def analyze_entry(input_path: str, sfreq: float, out_dir: str,
 
     summary = {"subjects": {}, "alpha": list(alpha_band), "sfreq": sfreq, "nperseg": nperseg, "window": window}
     total = len(schedule)
-    app.logger.info(f"Total tasks to run: {total} (max_processors={max_processors})")
+    if debug:
+        app.logger.info(f"Total tasks to run: {total} (debug mode: max_processors={max_processors}, single-threaded)")
+    else:
+        app.logger.info(f"Total tasks to run: {total} (max_processors={max_processors})")
     if total == 0:
         save_json(summary, os.path.join(out_dir, "summary.json"))
         return summary

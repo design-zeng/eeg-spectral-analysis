@@ -1,1 +1,21 @@
 /.idea
+/matlabcode
+/scripts
+/src/eegspec/__pycache__
+*.pyc
+*.zip
+__pycache__/
+*.egg-info/
+.env
+.venv/
+venv/
+*.log
+
+# Analysis artifacts (comparison, verification)
+*_comparison*.json
+*_analysis*.json
+*_structure.json
+strength_analysis_results.json
+mi_comparison_results.json
+deep_analysis_result.json
+docs/*.csv
