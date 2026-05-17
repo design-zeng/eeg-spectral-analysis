@@ -1,5 +1,6 @@
 LICENSE
 README.md
+RELEASE_NOTES_v0.4.0.md
 pyproject.toml
 src/eegspec/__init__.py
 src/eegspec/__main__.py
@@ -12,6 +13,7 @@ src/eegspec/connectivity.py
 src/eegspec/data_conversion.py
 src/eegspec/design_creativity.py
 src/eegspec/dualhandler.py
+src/eegspec/dynamic_window.py
 src/eegspec/faa.py
 src/eegspec/features.py
 src/eegspec/iaf.py
@@ -28,4 +30,8 @@ src/eegspec.egg-info/dependency_links.txt
 src/eegspec.egg-info/entry_points.txt
 src/eegspec.egg-info/requires.txt
 src/eegspec.egg-info/top_level.txt
+src/eegspec/segmentation/__init__.py
+src/eegspec/vendor/dualhandler.py
 tests/test_basic.py
+tests/test_dynamic_window.py
+tests/test_segmentation.py

@@ -19,5 +19,6 @@ strength_analysis_results.json
 mi_comparison_results.json
 deep_analysis_result.json
 docs/*.csv
-.cursor/Nguyen_PhD_S2017 (1).pdf
-src/eegspec/__pycache__/utils.cpython-310.pyc
+output/
+.cursor/
+src/eegspec/__pycache__/

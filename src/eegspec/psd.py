@@ -7,8 +7,12 @@ def compute_psd_welch(data: np.ndarray, sfreq: float, nperseg: int = 1000, nover
     if data.ndim != 2:
         raise ValueError("data must be (n_times, n_channels)")
     n_times, n_channels = data.shape
+    if n_times <= 0:
+        raise ValueError("data must contain at least one time sample")
+    nperseg = min(int(nperseg), n_times)
     if noverlap is None:
         noverlap = nperseg // 2
+    noverlap = min(int(noverlap), max(0, nperseg - 1))
     win = get_window(window, nperseg, fftbins=True)
     psds = []
     for ch in range(n_channels):

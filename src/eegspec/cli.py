@@ -1,9 +1,11 @@
 import argparse, sys, os, traceback
+
 from eegspec.base import BaseApp
 from eegspec.analyze import analyze_entry
 from eegspec.plot_trp import plot_trp_entry
 from eegspec.design_creativity import design_creativity_entry
 from eegspec.statistical_analysis import run_statistical_analysis
+from eegspec.dynamic_window import dynamic_window_entry
 
 
 def main(argv=None):
@@ -100,6 +102,100 @@ def _main_impl(argv=None):
     add_logging_args(sp)
     sp.set_defaults(func=cmd_statistical_analysis)
 
+    # -------- segment-protocol (design protocol segmentation pipeline) --------
+    sp = sub.add_parser(
+        "segment-protocol",
+        help="Segment continuous EEG-derived microstate labels into subtasks (hardness → cluster → merge).",
+    )
+    sp.add_argument("--sfreq", type=float, required=True, help="Sampling rate (Hz)")
+    sp.add_argument("--out-dir", required=True, help="Output directory for segmentation.json")
+    sp.add_argument("--labels-npy", type=str, default=None, help="Path to (T,) int microstate labels .npy")
+    sp.add_argument("--eeg-npy", type=str, default=None, help="Path to (T, C) float EEG .npy; requires microstate_analysis")
+    sp.add_argument(
+        "--line",
+        type=str,
+        choices=["none", "A", "B"],
+        default="none",
+        help="Preset: A=high-sensitivity (macro W=1), B=coarse (macro W=5, stride=5); default=manual config",
+    )
+    sp.add_argument("--group-sec", type=float, default=5.0, help="Fine group length in seconds")
+    sp.add_argument(
+        "--macro-window-size",
+        type=int,
+        default=None,
+        help="Macro window in fine groups (default: preset A=1, B=5, none=1)",
+    )
+    sp.add_argument(
+        "--macro-window-stride",
+        type=int,
+        default=None,
+        help="Macro stride in fine groups (default: same as macro window, or 1 for preset none)",
+    )
+    sp.add_argument("--n-clusters", type=int, default=4, help="KMeans cluster count")
+    sp.add_argument("--min-subtask-sec", type=float, default=10.0, help="Merge subtasks shorter than this (s)")
+    sp.add_argument("--smooth-window-w", type=int, default=3, help="Sliding majority half-window scale")
+    sp.add_argument("--min-state-duration-ms", type=float, default=80.0, help="Merge label runs shorter than this")
+    sp.add_argument("--lambda-reg", type=float, default=0.25, help="Reserved regularization weight")
+    sp.add_argument("--n-microstates", type=int, default=4, help="K for microstate_analysis bridge")
+    sp.add_argument("--ms-n-runs", type=int, default=25, help="k-means modified runs (bridge)")
+    add_logging_args(sp)
+    sp.set_defaults(func=cmd_segment_protocol)
+
+    # -------- dynamic-window (microstate-driven dynamic spectral windows) --------
+    sp = sub.add_parser(
+        "dynamic-window",
+        help="Compute spectral metrics on dynamic windows: microstate runs or protocol subtasks.",
+    )
+    sp.add_argument("--mode", choices=["run", "subtask"], required=True,
+                    help="run=A方案：正则化微状态run作窗；subtask=B方案：protocol subtask作窗")
+    sp.add_argument("--sfreq", type=float, required=True, help="Sampling rate (Hz)")
+    sp.add_argument("--out-dir", required=True, help="Output directory for dynamic_windows/metrics JSON")
+    sp.add_argument(
+        "--labels-npy",
+        default=None,
+        help="Path to (T,) int microstate labels .npy. If omitted, labels are fitted from EEG and saved.",
+    )
+    sp.add_argument("--eeg-npy", default=None, help="Path to (T, C) EEG .npy")
+    sp.add_argument("--input", default=None, help="Task-centric JSON/MAT subject file or folder; alternative to --eeg-npy")
+    sp.add_argument("--task", default=None, help="Task name to read from --input (default: first task)")
+    sp.add_argument("--channels-file", type=str, default=None, help="Plain text, .csv or .locs")
+    sp.add_argument("--n-channels", type=int, default=None, help="Expected channel count for --input")
+    sp.add_argument("--nperseg", type=int, default=1024, help="Requested Welch segment length")
+    sp.add_argument("--noverlap", type=int, default=None, help="Requested Welch overlap")
+    sp.add_argument("--window", type=str, default="hann", help="Welch window function")
+    sp.add_argument("--alpha", type=str, default="8,13", help="Alpha band for IAF/FAA")
+    sp.add_argument("--faa-db", action="store_true", help="Compute FAA as dB difference")
+    sp.add_argument("--min-window-sec", type=float, default=1.0,
+                    help="Drop dynamic windows shorter than this duration")
+    sp.add_argument("--smooth-window-w", type=int, default=3, help="Microstate label smoothing scale")
+    sp.add_argument("--min-state-duration-ms", type=float, default=80.0,
+                    help="Merge microstate runs shorter than this duration before windowing")
+    sp.add_argument("--line", choices=["none", "A", "B"], default="B",
+                    help="Only for --mode subtask: protocol preset")
+    sp.add_argument("--group-sec", type=float, default=5.0,
+                    help="Only for --mode subtask: fine group length")
+    sp.add_argument("--macro-window-size", type=int, default=None,
+                    help="Only for --mode subtask: macro window in fine groups")
+    sp.add_argument("--macro-window-stride", type=int, default=None,
+                    help="Only for --mode subtask: macro stride in fine groups")
+    sp.add_argument("--n-clusters", type=int, default=4,
+                    help="Only for --mode subtask: KMeans cluster count")
+    sp.add_argument("--min-subtask-sec", type=float, default=10.0,
+                    help="Only for --mode subtask: merge subtasks shorter than this")
+    sp.add_argument("--n-microstates", type=int, default=4,
+                    help="When --labels-npy is omitted: K for microstate fitting")
+    sp.add_argument("--ms-n-runs", type=int, default=25,
+                    help="When --labels-npy is omitted: modified k-means runs")
+    sp.add_argument("--ms-n-std", type=int, default=3,
+                    help="When --labels-npy is omitted: GFP peak std threshold")
+    sp.add_argument("--ms-distance", type=int, default=10,
+                    help="When --labels-npy is omitted: fit_back distance")
+    sp.add_argument("--ms-all-samples", action="store_true",
+                    help="When --labels-npy is omitted: fit maps from all samples instead of GFP peaks")
+    sp.add_argument("--save-psd", action="store_true", help="Also write per-window PSD arrays")
+    add_logging_args(sp)
+    sp.set_defaults(func=cmd_dynamic_window)
+
     args = p.parse_args(argv)
     return args.func(args)
 
@@ -192,6 +288,90 @@ def cmd_design_creativity(args):
         app.logger.error(f"Design Creativity failed: {e}")
         app.logger.debug(traceback.format_exc())
         raise
+
+
+def cmd_segment_protocol(args):
+    from microstate_analysis.protocol_segmentation.runner import run_segment_protocol_main
+
+    app = BaseApp(
+        log_level=args.log_level,
+        log_dir=args.log_dir,
+        log_prefix=args.log_prefix,
+        log_suffix=args.log_suffix,
+        log_percentage=args.log_percentage,
+    )
+    try:
+        out_json = run_segment_protocol_main(
+            sfreq=float(args.sfreq),
+            out_dir=args.out_dir,
+            labels_npy=args.labels_npy,
+            eeg_npy=args.eeg_npy,
+            line=args.line,
+            group_sec=args.group_sec,
+            macro_window_size=args.macro_window_size,
+            macro_window_stride=args.macro_window_stride,
+            n_clusters=args.n_clusters,
+            min_subtask_sec=args.min_subtask_sec,
+            smooth_window_w=args.smooth_window_w,
+            min_state_duration_ms=args.min_state_duration_ms,
+            lambda_reg=args.lambda_reg,
+            n_microstates=args.n_microstates,
+            ms_n_runs=args.ms_n_runs,
+        )
+    except ValueError as e:
+        raise SystemExit(str(e)) from e
+    app.logger.info(f"Wrote {out_json}")
+
+
+def cmd_dynamic_window(args):
+    app = BaseApp(
+        log_level=args.log_level,
+        log_dir=args.log_dir,
+        log_prefix=args.log_prefix,
+        log_suffix=args.log_suffix,
+        log_percentage=args.log_percentage,
+    )
+    try:
+        summary = dynamic_window_entry(
+            out_dir=args.out_dir,
+            sfreq=args.sfreq,
+            labels_npy=args.labels_npy,
+            mode=args.mode,
+            eeg_npy=args.eeg_npy,
+            input_path=args.input,
+            task=args.task,
+            channels_file=args.channels_file,
+            n_channels=args.n_channels,
+            nperseg=args.nperseg,
+            noverlap=args.noverlap,
+            window=args.window,
+            alpha=args.alpha,
+            faa_db=args.faa_db,
+            min_window_sec=args.min_window_sec,
+            smooth_window_w=args.smooth_window_w,
+            min_state_duration_ms=args.min_state_duration_ms,
+            line=args.line,
+            group_sec=args.group_sec,
+            macro_window_size=args.macro_window_size,
+            macro_window_stride=args.macro_window_stride,
+            n_clusters=args.n_clusters,
+            min_subtask_sec=args.min_subtask_sec,
+            n_microstates=args.n_microstates,
+            ms_n_runs=args.ms_n_runs,
+            ms_n_std=args.ms_n_std,
+            ms_distance=args.ms_distance,
+            ms_peaks_only=not args.ms_all_samples,
+            save_psd=args.save_psd,
+        )
+    except Exception as e:
+        app.logger.error(f"Dynamic-window failed: {e}")
+        app.logger.debug(traceback.format_exc())
+        raise
+    app.logger.info(
+        f"Dynamic-window complete: mode={summary['mode']} "
+        f"n_windows={summary['n_windows']} n_skipped={summary['n_skipped']} "
+        f"out={args.out_dir}"
+    )
 
 
 def cmd_statistical_analysis(args):

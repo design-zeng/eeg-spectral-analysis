@@ -1,7 +1,7 @@
 Metadata-Version: 2.4
 Name: eegspec
-Version: 0.2.0
-Summary: EEG spectral toolkit: folder/file JSON (task-centric per subject), Welch PSD & metrics (bandpower/entropy/moments/SEF/F50/IAF/FAA), multiprocessing scheduler, DualHandler logging.
+Version: 0.4.0
+Summary: EEG spectral toolkit: Welch PSD & metrics, TRP plots, design creativity (wPLI/graph), protocol segmentation, dynamic microstate windows, DualHandler logging.
 License: MIT License
 Requires-Python: >=3.9
 Description-Content-Type: text/markdown
@@ -13,12 +13,13 @@ Requires-Dist: matplotlib>=3.7
 Requires-Dist: networkx>=3.0
 Requires-Dist: scikit-learn>=1.3.0
 Requires-Dist: statsmodels>=0.13.0
+Requires-Dist: microstate_analysis>=0.4.0
 Dynamic: license-file
 
 # eeg-spectral-analysis
 
-**Version**: v0.2.0  
-**Summary**: EEG spectral analysis toolkit for task‑centric JSON/MATLAB inputs. Computes Welch PSD and common spectral metrics (band powers, entropy, spectral moments, SEF95, median frequency, IAF, FAA). Supports subject‑major, task‑level multiprocessing and DualHandler logging. **Now includes**: group TRP plotting, design creativity analysis with wPLI connectivity, graph theory features (Strength, Betweenness), and classification (SVM, MLP, KNN). Automatic 63→64 channel conversion for MATLAB data.
+**Version**: v0.4.0  
+**Summary**: EEG spectral analysis toolkit for task‑centric JSON/MATLAB inputs. Computes Welch PSD and common spectral metrics (band powers, entropy, spectral moments, SEF95, median frequency, IAF, FAA). Supports subject‑major, task‑level multiprocessing and DualHandler logging. **Also includes**: group TRP plotting; design creativity analysis with wPLI connectivity, graph features (Strength, Betweenness), and classification (SVM, MLP, KNN); **design protocol segmentation** via dependency **`microstate_analysis`** (`eegspec segment-protocol` delegates to the same code as `microstate-analysis protocol-segment`); **microstate-driven dynamic spectral windows** (`dynamic-window`: run windows vs protocol-subtask windows). Automatic 63→64 channel conversion for MATLAB data.
 
 ---
 
@@ -71,7 +72,17 @@ You **should** provide channel names with **`--channels-file`**. Supported forma
 pip install -e .
 ```
 
-> Requires: Python ≥ 3.9, NumPy, SciPy, MNE, Matplotlib, NetworkX, scikit-learn.
+### Compatibility
+
+| Component | Notes |
+|-----------|--------|
+| **Python** | ≥ 3.9 |
+| **NumPy** | ≥ 1.22; **NumPy 2.x** supported (`FAA` uses `np.trapezoid` when available, otherwise `np.trapz`) |
+| **SciPy, MNE, Matplotlib, NetworkX, scikit-learn, statsmodels** | As listed in `pyproject.toml` |
+| **Protocol segmentation** | Core implementation: **`microstate_analysis` ≥ 0.4.0** (`protocol_segmentation`), declared in `pyproject.toml`. For local development, install the sibling repo first: `pip install -e D:\Documents\GitHub\microstate-analysis`, then `pip install -e .` for **eegspec**. |
+| **`segment-protocol --eeg-npy`** | Labels are fitted in-process with **`Microstate.opt_microstate`** + **`fit_back`** (same package). |
+
+> Subpackage **`eegspec.segmentation`** is a thin re-export of `microstate_analysis.protocol_segmentation` for backward-compatible imports; it is still shipped in the wheel via `packages.find`.
 
 ---
 
@@ -79,12 +90,18 @@ pip install -e .
 
 ### Single subject
 ```powershell
-eegspec analyze --input D:\EEG\sub_01.json --sfreq 500 --out-dir D:\EEG\out --nperseg 1024 --noverlap 512 --window hann --channels-file D:\EEG\caps63.locs --alpha 8,13 --faa-db --max-processors 8 --log-level DEBUG --log-dir D:\EEG\out\.logs --log-prefix run_ --log-suffix _alpha --log-percentage 0.8
+eegspec analyze --input ./data/sub_01.json --sfreq 500 --out-dir ./output --nperseg 1024 --noverlap 512 --window hann --channels-file ./caps63.locs --alpha 8,13 --faa-db --max-processors 8 --log-level INFO
 ```
 
 ### Folder of subjects
 ```powershell
-eegspec analyze --input D:\EEG\subjects --sfreq 500 --out-dir D:\EEG\out --nperseg 1024 --noverlap 512 --window hann --channels-file D:\EEG\caps63.locs --alpha 8,13 --faa-db --max-processors 8 --log-level INFO --log-dir D:\EEG\out\.logs
+eegspec analyze --input ./data/subjects --sfreq 500 --out-dir ./output --nperseg 1024 --noverlap 512 --window hann --channels-file ./caps63.locs --alpha 8,13 --faa-db --max-processors 8
+```
+
+### Dynamic windows from microstate labels
+```powershell
+eegspec dynamic-window --mode run --sfreq 500 --input D:\Documents\GitHub\microstate-analysis\storage\clean_data\sub_01.json --task "1_rest" --channels-file .\src\eegspec\data\montages\caps63.locs --out-dir .\output\dynamic_run_sub01_rest --nperseg 1024 --min-window-sec 1 --n-microstates 4 --ms-n-runs 5
+eegspec dynamic-window --mode subtask --sfreq 500 --input D:\Documents\GitHub\microstate-analysis\storage\clean_data\sub_01.json --task "1_rest" --channels-file .\src\eegspec\data\montages\caps63.locs --out-dir .\output\dynamic_subtask_sub01_rest --line B --group-sec 5 --nperseg 1024 --min-window-sec 1 --n-microstates 4 --ms-n-runs 5
 ```
 
 **Key parameters**
@@ -99,6 +116,7 @@ eegspec analyze --input D:\EEG\subjects --sfreq 500 --out-dir D:\EEG\out --npers
 - `--faa-db` : Compute FAA as dB difference (otherwise natural log difference)  
 - `--max-processors` : Max concurrent tasks  
 - Logging: `--log-level`, `--log-dir`, `--log-prefix`, `--log-suffix`, `--log-percentage`
+- `dynamic-window --mode run|subtask`: choose **run windows** (regularized microstate runs) or **subtask windows** (protocol segmentation subtasks) for per-window spectral metrics.
 
 ---
 
@@ -112,6 +130,16 @@ out/
 │  │  └─ metrics_task_A.json    # bands_abs/rel, entropy, moments, SEF95, F50, IAF, FAA
 │  └─ sub_02/...
 └─ summary.json                 # run parameters and an index of all subject×task outputs
+```
+
+`dynamic-window` writes:
+
+```
+dyn_out/
+├─ dynamic_windows.json          # window boundaries, labels/clusters, skipped short windows
+├─ dynamic_metrics.json          # per-window band powers, entropy, moments, SEF95, F50, IAF, FAA
+├─ dynamic_summary.json          # compact index
+└─ dynamic_psd.json              # optional, only with --save-psd
 ```
 
 **Metrics included**
@@ -139,19 +167,123 @@ Use `plot-trp` to aggregate **multiple TRP summaries** (pass several `--summary`
 
 ### Example A — aggregate a directory (recursive)
 ```powershell
-eegspec plot-trp --summary-dir "D:\EEG\out\subjects" --summary-glob "trp_1_rest.json" --out-dir "D:\EEG\out\group" --layout collapsed --exclude-midline --mode logratio --lower-key 8_10 --upper-key 10_12 --merge "idea generation=1_idea generation,2_idea generation,3_idea generation" --merge "idea rating=1_idea rating,2_idea rating,3_idea rating" --merge "idea evolution=1_idea evolution,2_idea evolution,3_idea evolution" --exclude-condition "3_rest" --only-merged --log-level INFO --log-dir "D:\EEG\out\.logs" --log-prefix "plot_" --log-suffix "_trp"
+eegspec plot-trp --summary-dir ./output/subjects --summary-glob "trp_1_rest.json" --out-dir ./output/group --layout collapsed --exclude-midline --mode logratio --lower-key 8_10 --upper-key 10_12 --merge "idea generation=1_idea generation,2_idea generation,3_idea generation" --merge "idea rating=1_idea rating,2_idea rating,3_idea rating" --merge "idea evolution=1_idea evolution,2_idea evolution,3_idea evolution" --exclude-condition "3_rest" --only-merged
 ```
 
 ### Example B — specify several files explicitly
 ```powershell
-eegspec plot-trp --summary "D:\EEG\out\subjects\sub_01\trp_1_rest.json" --summary "D:\EEG\out\subjects\sub_02\trp_1_rest.json" --summary "D:\EEG\out\subjects\sub_04\trp_1_rest.json" --montage "C:\Users\123456\Documents\Github\eeg-spectral-analysis\src\eegspec\data\montages\caps63.locs" --out-dir "D:\EEG\out\group" --layout hemi --exclude-midline --mode log10 --lower-key lower_alpha --upper-key upper_alpha --only-merged --log-level DEBUG
+eegspec plot-trp --summary ./output/subjects/sub_01/trp_1_rest.json --summary ./output/subjects/sub_02/trp_1_rest.json --out-dir ./output/group --layout hemi --exclude-midline --mode log10 --lower-key lower_alpha --upper-key upper_alpha --only-merged
 ```
 
 > Tip: If you expect values around −0.1 to −0.5 but see ≈ −1.x, switch to `--mode log10` (since `ln R = 2.3026 × log10 R`).
 
 ---
 
-## 7) Design Creativity Analysis
+## 7) Protocol segmentation (`segment-protocol`)
+
+Pipeline (aligned with Nguyen thesis logic): **microstate label regularization (short-run merge / sliding vote)** → **fine time groups** → **transient‑microstate‑style hardness feature (`tm_percent`)** → **macro window mean** → **KMeans** → **merge adjacent windows with the same cluster**.
+
+**Where the code lives:** `microstate_analysis.protocol_segmentation` in the **`microstate-analysis`** package (v0.4.0+). The **`eegspec segment-protocol`** command delegates to the same **`run_segment_protocol_main`** entry as the Typer CLI **`microstate-analysis protocol-segment`**.
+
+**Inputs**
+
+- **`--labels-npy`**: `int64` array shape `(T,)` — one microstate id per sample (required unless `--eeg-npy` is given).
+- **`--eeg-npy`**: `float64` array shape `(T, C)` — continuous EEG; labels are estimated with **`Microstate.opt_microstate`** + **`fit_back`** inside **microstate_analysis**.
+
+**Line A / Line B (paper-style presets)**
+
+- **`--line A`**: high sensitivity — `macro_window_size = 1`, `stride = 1` (one fine group per macro feature).
+- **`--line B`**: coarse — `macro_window_size = 5`, `stride = 5`; with default `--group-sec 5`, each macro block ≈ **25 s**.
+
+Override with **`--macro-window-size`** / **`--macro-window-stride`** when set (defaults `None` = keep preset).
+
+**Example — labels only (Line A)**
+
+```powershell
+eegspec segment-protocol --sfreq 500 --out-dir ./seg_out --labels-npy ./labels.npy --line A --log-level INFO
+```
+
+**Example — Line B (≈25 s macro blocks)**
+
+```powershell
+eegspec segment-protocol --sfreq 500 --out-dir ./seg_out --labels-npy ./labels.npy --line B
+```
+
+**Output**
+
+- `segmentation.json`: `subtasks` (start/end sec, cluster id, mean hardness), `boundaries_sec`, `diagnostics`.
+
+**Python API** (canonical import)
+
+```python
+from microstate_analysis.protocol_segmentation import SegmentationConfig, run_segmentation_pipeline
+import numpy as np
+labels = np.load("labels.npy")
+cfg = SegmentationConfig(sfreq=500.0, macro_window_size=1, macro_window_stride=1)
+result = run_segmentation_pipeline(labels, cfg)
+```
+
+`from eegspec.segmentation import ...` still works and re-exports the same symbols.
+
+---
+
+## 8) Dynamic Microstate-Window Spectral Analysis (`dynamic-window`)
+
+This command implements the two dynamic-window strategies discussed above and then runs the usual spectral post-processing on every dynamic window.
+
+| Mode | Window boundary | Best for | Important caveat |
+|------|-----------------|----------|------------------|
+| `--mode run` | Regularized microstate label runs (`sliding_majority` + `merge_short_runs`) | Pure **microstate × spectral** questions | Many runs can be short; use `--min-window-sec` and watch `skipped_windows` |
+| `--mode subtask` | Protocol segmentation `subtasks` (`tm_percent` → macro windows → KMeans → adjacent merge) | **Protocol/task phase × spectral** questions | A subtask can contain multiple microstate labels, so spectra are phase-level averages |
+
+**Inputs**
+
+- EEG data: either `--eeg-npy ./eeg.npy` with shape `(T, C)`, or `--input ./data/sub_01.json --task "1_rest"` for task-centric JSON/MAT data.
+- Labels: optional `--labels-npy ./labels.npy` with shape `(T,)`. If omitted, labels are fitted from the EEG with `Microstate.opt_microstate` + `fit_back` and saved as `computed_labels.npy` in `--out-dir`. If EEG and labels lengths differ, both are truncated to the common prefix.
+- Channel names: optional `--channels-file`; without `F3`/`F4`, FAA is written as `null`.
+
+**Run-window mode (A)**
+
+```powershell
+eegspec dynamic-window --mode run --sfreq 500 --eeg-npy ./eeg.npy --labels-npy ./labels.npy --out-dir ./dyn_run --nperseg 1024 --min-window-sec 1 --smooth-window-w 3 --min-state-duration-ms 80 --save-psd
+```
+
+**Subtask-window mode (B)**
+
+```powershell
+eegspec dynamic-window --mode subtask --sfreq 500 --eeg-npy ./eeg.npy --labels-npy ./labels.npy --out-dir ./dyn_subtask --line B --group-sec 5 --nperseg 1024 --min-window-sec 1 --n-clusters 4 --min-subtask-sec 10 --save-psd
+```
+
+**How to compare**
+
+- Compare `dyn_run/dynamic_windows.json` vs `dyn_subtask/dynamic_windows.json` to see how many windows were produced and where boundaries differ.
+- Compare `dynamic_metrics.json` to inspect downstream results per window (`bands_abs`, `bands_rel`, `entropy`, `IAF`, `FAA`, etc.).
+- `--save-psd` writes full per-window PSD arrays; omit it for smaller outputs.
+
+**Local real-data CMD demo**
+
+The commands below use the real local data found at `D:\Documents\GitHub\microstate-analysis\storage\clean_data\sub_01.json`, task `1_rest` (`63 × 27000`, loaded internally as `(27000, 63)`). Both commands independently compute microstate labels from the same EEG and save their own `computed_labels.npy`, so B does not reuse A's intermediate output.
+
+```bat
+cd /d D:\Documents\GitHub\eeg-spectral-analysis
+python -m pip install -e D:\Documents\GitHub\microstate-analysis
+python -m pip install -e .
+set PYTHONPATH=D:\Documents\GitHub\microstate-analysis\src;D:\Documents\GitHub\eeg-spectral-analysis\src
+
+python -m eegspec.cli dynamic-window --mode run --sfreq 500 --input D:\Documents\GitHub\microstate-analysis\storage\clean_data\sub_01.json --task "1_rest" --channels-file .\src\eegspec\data\montages\caps63.locs --out-dir .\output\dynamic_run_sub01_rest --nperseg 1024 --min-window-sec 1 --smooth-window-w 3 --min-state-duration-ms 80 --n-microstates 4 --ms-n-runs 5 --save-psd
+python -m eegspec.cli dynamic-window --mode subtask --sfreq 500 --input D:\Documents\GitHub\microstate-analysis\storage\clean_data\sub_01.json --task "1_rest" --channels-file .\src\eegspec\data\montages\caps63.locs --out-dir .\output\dynamic_subtask_sub01_rest --line B --group-sec 5 --nperseg 1024 --min-window-sec 1 --smooth-window-w 3 --min-state-duration-ms 80 --n-clusters 4 --min-subtask-sec 10 --n-microstates 4 --ms-n-runs 5 --save-psd
+
+type .\output\dynamic_run_sub01_rest\dynamic_summary.json
+type .\output\dynamic_subtask_sub01_rest\dynamic_summary.json
+python -c "import json; p='output/dynamic_run_sub01_rest/dynamic_windows.json'; d=json.load(open(p)); print('run diagnostics=', d['diagnostics']); print('first run windows=', d['windows'][:3])"
+python -c "import json; p='output/dynamic_subtask_sub01_rest/dynamic_windows.json'; d=json.load(open(p)); print('subtask diagnostics=', d['diagnostics']); print('subtask windows=', d['windows'][:5])"
+python -c "import json; p='output/dynamic_run_sub01_rest/dynamic_metrics.json'; d=json.load(open(p)); print('first run alpha abs=', d['windows_metrics'][0]['metrics']['bands_abs']['alpha'][:5]); print('first run FAA=', d['windows_metrics'][0]['metrics']['FAA'])"
+python -c "import json; p='output/dynamic_subtask_sub01_rest/dynamic_metrics.json'; d=json.load(open(p)); print('first subtask alpha abs=', d['windows_metrics'][0]['metrics']['bands_abs']['alpha'][:5]); print('first subtask FAA=', d['windows_metrics'][0]['metrics']['FAA'])"
+```
+
+---
+
+## 9) Design Creativity Analysis
 
 The `design-creativity` command implements the complete pipeline from the paper "EEG FUNCTIONAL CONNECTIVITY REVEALS NEURAL MECHANISMS OF DESIGN CREATIVITY IN ENGINEERING STUDENTS":
 
@@ -166,7 +298,12 @@ The `design-creativity` command implements the complete pipeline from the paper 
 
 ### Example — Design Creativity Analysis
 ```powershell
-eegspec design-creativity --input Z:\Creativity_EEG_Dataset --sfreq 500 --out-dir Z:\results --channels-file D:\EEG\caps63.locs --n-channels 64 --freq-range "8,13" --threshold 0.2 --max-processors 8 --log-level INFO --log-dir Z:\results\.logs --log-prefix creativity_ --log-suffix _analysis
+eegspec design-creativity --input ./Creativity_EEG_Dataset --sfreq 500 --out-dir ./results --channels-file ./src/eegspec/data/montages/caps63.locs --n-channels 64 --freq-range "8,13" --threshold 0.2 --max-processors 8 --log-level INFO --log-dir ./results/.logs --log-prefix creativity_ --log-suffix _analysis
+```
+
+Or with relative paths (channels file optional; built-in caps63.locs used if omitted):
+```powershell
+eegspec design-creativity --input ./data --sfreq 500 --out-dir ./output --n-channels 64 --freq-range "8,13" --threshold 0.2 --max-processors 8
 ```
 
 **Key parameters:**
@@ -200,16 +337,20 @@ out/
 
 ---
 
-## 8) Troubleshooting
+## 10) Troubleshooting
 
 - **`"FAA": NaN`** → Channel names don’t include `F3` and/or `F4`, or name/shape mismatch. Fix your `--channels-file` so that it lists the correct names in the exact data order.  
 - **No outputs** → Check logs under `--log-dir` for `[Task error]` / `Analyze failed`.  
 - **Data too short** → Ensure `nperseg` and `noverlap` are valid given your time‑series length.  
+- **`dynamic-window` produces few windows** → Increase data length, reduce `--min-window-sec`, or reduce label smoothing/short-run merge thresholds.
+- **`dynamic-window` FAA is `null`** → Channel names don’t include `F3` and `F4`; provide a two-column test montage or the real montage via `--channels-file`.
 - **Performance** → Increase `--max-processors` to utilize more cores; the scheduler fills by subject (subject‑major, task‑level windowing) to be memory‑friendly.
+- **`segment-protocol` / import errors** → Install **microstate_analysis** ≥ 0.4.0 in the same environment (`pip install -e` on the **microstate-analysis** repo, then **eegspec**). `eegspec.segmentation` only re-exports that package.
+- **`AttributeError: numpy has no attribute trapz`** → Upgrade to **eegspec ≥ 0.4.0** (uses `trapz_compat`), or pin NumPy < 2.
 
 ---
 
-## 9) Reproducibility & logging
+## 11) Reproducibility & logging
 
 - All runs log parameters and progress via **DualHandler** (console + file).  
 - Each task’s log filename includes `{subject}_{task}` for easy filtering.  
@@ -218,7 +359,7 @@ out/
 
 ---
 
-## 10) Data Format Conversion
+## 12) Data Format Conversion
 
 The toolkit automatically handles data format conversions:
 
@@ -236,8 +377,20 @@ The toolkit automatically handles data format conversions:
 - Automatically detects and corrects data orientation
 - Ensures consistent format throughout the pipeline
 
+**MATLAB Compatibility:**
+- Design creativity pipeline matches MATLAB `Connectivity_Analysis.m`: wPLI, Strength, Betweenness (weight=1/wPLI, unnormalized)
+- Strength correlates ~1.0 with MATLAB; Betweenness correlates ~0.87 (small wPLI differences affect graph structure)
+
 ---
-## 11) Roadmap (optional)
+## 13) Examples
+
+Basic usage examples are in `examples/`:
+- `example.py` — PSD, bandpower, FAA from eegspec
+- `eeg_channel_conversion.py` — 63→64 channel conversion (standalone)
+- `example_usage.py` — Channel conversion usage examples
+
+---
+## 14) Roadmap (optional)
 
 - Plotting helpers (PSD curves, connectivity heatmaps, graph visualizations)  
 - FAA channel selection flags (`--faa-left`, `--faa-right`) if your montage differs from F3/F4
@@ -245,6 +398,6 @@ The toolkit automatically handles data format conversions:
 
 ---
 
-## 12) License
+## 15) License
 
 This project is released under the MIT License. See `LICENSE` for details.

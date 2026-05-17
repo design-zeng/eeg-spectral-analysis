@@ -7,6 +7,18 @@ from typing import List, Tuple, Dict, Any
 EPS = 1e-20
 
 
+def trapz_compat(y, x) -> np.floating:
+    """
+    Trapezoidal integration along the last axis of y vs x.
+    NumPy 2.0 removed ``np.trapz`` in favor of ``np.trapezoid``; NumPy 1.x keeps ``trapz``.
+    """
+    y = np.asarray(y, dtype=np.float64)
+    x = np.asarray(x, dtype=np.float64)
+    if hasattr(np, "trapezoid"):
+        return np.trapezoid(y, x)
+    return np.trapz(y, x)  # type: ignore[attr-defined]
+
+
 class Float64JSONEncoder(json.JSONEncoder):
     """
     Custom JSON encoder that preserves full 64-bit float precision.
